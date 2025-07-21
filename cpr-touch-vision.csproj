@@ -1,6 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>CPRTouchVision</RootNamespace>
@@ -48,11 +49,28 @@
     <PackageReference Include="WinUIEx" Version="2.6.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />
+    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj">
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HardwareDetection\HardwareDetection.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyNativeDependencies" AfterTargets="Build">
+	<ItemGroup>
+	  <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.dll" />
+	  <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.onnx" />
+	</ItemGroup>
+
+	<Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
+	<Copy SourceFiles="@(OnnxFiles)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
+  </Target>	
+	
   <ItemGroup>
     <Reference Include="SharpOSC">
-      <HintPath>..\..\..\..\..\dev\SharpOSC.dll</HintPath>
+      <HintPath>C:\Tools\mylib\SharpOSC.dll</HintPath>
     </Reference>
   </ItemGroup>
 

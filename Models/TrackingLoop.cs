@@ -24,12 +24,14 @@ namespace CPRTouchVision.Models
         public TrackingLoop(in Calibration calibration)
         {
             _thread = new Thread(BackgroundLoop) { IsBackground = true };
+            /*
             _tracker = new Tracker(calibration, new TrackerConfiguration()
             {
                 SensorOrientation = SensorOrientation.Default,
                 ProcessingMode = TrackerProcessingMode.GpuCuda,
                 ModelPath = Sdk.BODY_TRACKING_DNN_MODEL_FILE_NAME
             });
+            */
             //{
             //    TemporalSmoothingFactor = 0.8f
             //};

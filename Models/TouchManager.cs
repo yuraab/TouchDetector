@@ -46,6 +46,9 @@ namespace CPRTouchVision.Models
         bool _isFloorLevelSet = false;
 
         [ObservableProperty]
+        bool isWallPlaneSet = false;
+
+        [ObservableProperty]
         string _floorLevelStatus = "Not set";
 
         [ObservableProperty]
@@ -84,9 +87,12 @@ namespace CPRTouchVision.Models
 
         private List<Vector3> _calibrationPoints = new();
         private ObservableCollection<Trampoline> _trampolines = new();
+
         private float _planeD = float.MinValue;
         private Vector3 _planeNormal = Vector3.Zero;
         private Vector3 _cameraPosition = Vector3.Zero;
+
+
         private System.Numerics.Quaternion _cameraRotation = System.Numerics.Quaternion.Identity;
         private DepthVisualizer _depthVisualizer;
         public readonly object Lock = new object();
@@ -157,21 +163,21 @@ namespace CPRTouchVision.Models
         private void Start()
         {
             if (IsRunning || !Device.TryOpen(out var device)) return;
-            Sdk.IsBodyTrackingRuntimeAvailable(out var message);
-            Debug.WriteLine(message);
+            //Sdk.IsBodyTrackingRuntimeAvailable(out var message);
+            //Debug.WriteLine(message);
             _captureLoop = new(device);
             _captureLoop.CaptureReady += OnCaptureReady;
             _captureLoop.LoopFailed += OnLoopFailed;
             _captureLoop.GetCalibration(out _calibration);
 
-            _trackingLoop = new(_calibration);
-            _trackingLoop.BodyFrameReady += OnBodyFrameReady;
-            _trackingLoop.LoopFailed += OnLoopFailed;
+            //_trackingLoop = new(_calibration);
+            //_trackingLoop.BodyFrameReady += OnBodyFrameReady;
+            //_trackingLoop.LoopFailed += OnLoopFailed;
 
             _transformation = new Transformation(_calibration);
 
             _captureLoop.Run();
-            _trackingLoop.Run();
+            //_trackingLoop.Run();
             IsRunning = true;
         }
 
@@ -382,15 +388,22 @@ namespace CPRTouchVision.Models
                 return;
 
             var d = GetDepth(point);
+            App.Log($"Depth {d}");
 
             if (d > 0 && _calibrationPoints.Count < CalibrationPointsCount)
             {
                 _calibrationPoints.Add(new(point.X, point.Y, d));
-
+#if DEBUG
+                App.Log($"Calibration point count {_calibrationPoints.Count} now");
+#endif
                 if (_calibrationPoints.Count == CalibrationPointsCount)
                 {
                     IsCalibrating = false;
-                    FitPlane();
+#if DEBUG
+                    App.Log("Calibration done!");
+#endif
+                    //FitPlane();
+                    WallPlane();
                 }
             }
         }
@@ -475,6 +488,79 @@ namespace CPRTouchVision.Models
             IsFloorLevelSet = true;
             IsFittingPlane = false;
         }
+
+        private async void WallPlane()
+        {
+            if (IsFittingPlane)
+                return;
+
+            IsFittingPlane = true;
+
+            int minX = int.MaxValue;
+            int minY = int.MaxValue;
+            int maxX = int.MinValue;
+            int maxY = int.MinValue;
+
+            foreach (var point in _calibrationPoints)
+            {
+                minX = Math.Min((int)point.X, minX);
+                minY = Math.Min((int)point.Y, minY);
+                maxX = Math.Max((int)point.X, maxX);
+                maxY = Math.Max((int)point.Y, maxY);
+            }
+
+            int w = maxX - minX;
+            int h = maxY - minY;
+            DepthPoint[] result = new DepthPoint[w * h];
+
+            lock (_depthLock)
+            {
+                Parallel.For(0, result.Length, (i) =>
+                {
+                    int x = minX + i % w;
+                    int y = minY + i / w;
+                    int index = y * _fw + x;
+                    float d = (float)_depthData[index];
+
+                    var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
+                    if (d > 0 && world != null)
+                    {
+                        result[i] = DepthPoint.From(
+                            x,
+                            y,
+                            world.Value.X,
+                            world.Value.Y,
+                            world.Value.Z
+                        );
+                    }
+                    else
+                        result[i] = DepthPoint.Empty;
+                });
+            }
+
+            var points = result.Where(p => !p.IsEmpty).ToArray();
+            (_planeD, _planeNormal) = await Task.Run(() => FitPlaneSVD2(points));
+#if DEBUG
+            App.Log($"Wall normal: {_planeNormal}");
+            App.Log($"Wall equation: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
+#endif
+            //Debug.WriteLine($"Wall normal: {_planeNormal}");
+            //Debug.WriteLine($"Wall equation: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
+
+            float numerator = MathF.Abs(Vector3.Dot(_planeNormal, Vector3.Zero) + _planeD);
+            float denominator = _planeNormal.Length();
+
+            if (denominator == 0)
+                throw new ArgumentException("The wall plane normal cannot be a zero vector.");
+
+            float distance = numerator / denominator;
+            _cameraPosition = new Vector3(distance, 0, 0); // ← Adjust axis if wall is along Z instead of X
+
+            await SaveConfig();
+            IsWallPlaneSet = true;
+            IsFittingPlane = false;
+        }
+
 
         private (float, Vector3) FitPlaneSVD(DepthPoint[] points)
         {

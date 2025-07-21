@@ -200,7 +200,7 @@ namespace CPRTouchVision
             paint.Style = SKPaintStyle.Fill;
             canvas.DrawCircle(_manager.Cursor, 6, paint);
         }
-
+/*
         private void DrawBones(SKCanvas canvas, SKPaint paint, Skeleton skeleton)
         {
             paint.Style = SKPaintStyle.Stroke;
@@ -233,7 +233,7 @@ namespace CPRTouchVision
                 }
             }
         }
-
+*/
         private void OnCanvasPointerMoved(object sender, PointerRoutedEventArgs e)
         {
             if (e.GetCurrentPoint(Canvas) is PointerPoint point)
@@ -271,13 +271,23 @@ namespace CPRTouchVision
                 var s = ((UIElement)sender).XamlRoot.RasterizationScale;
                 var x = (int)(point.Position.X * s / _cw * _manager.FW);
                 var y = (int)(point.Position.Y * s / _ch * _manager.FH);
+                string message = $"point with x={x}, y={y}";
 
                 if (_isClosingTrampoline)
+                {
+                    App.Log("Close Trampoline");
                     _manager.CloseTrampoline();
+                }
                 if (_manager.IsCalibrating)
+                {
+                    App.Log($"Add calibrating {message}");
                     _manager.AddCalibrationPoint(new(x, y));
+                }
                 else if (_manager.IsAddingTrampoline)
+                {
+                    App.Log($"Add Trampoline {message}");
                     _manager.AddTrampolinePoint(x, y);
+                }
             }
         }
 
@@ -285,7 +295,7 @@ namespace CPRTouchVision
         {
             _manager.StartAddingTrampoline();
         }
-
+/*
         private void OnDeleteTrampolineClicked(object sender, RoutedEventArgs e)
         {
             if (sender is MenuFlyoutItem item && item.Tag is int id)
@@ -293,5 +303,6 @@ namespace CPRTouchVision
                 _manager.RemoveTrampolineWith(id);
             }
         }
+*/
     }
 }
