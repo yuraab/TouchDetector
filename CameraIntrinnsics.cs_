@@ -1,0 +1,41 @@
+﻿using Emgu.CV.Dai;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Windows.Devices.Sensors;
+using Windows.Media.Devices.Core;
+using Orbbec;
+
+namespace CPRTouchVision
+{
+    internal class CameraIntrinnsics
+    {
+        public float fx, fy, cx, cy;
+        public int width, height;
+    }
+
+    public static CameraIntrinsics GetDepthCameraIntrinsics(OBPipeline pipeline)
+        {
+            using var device = pipeline.GetDevice();
+            using var depthSensor = device.GetSensor(OBSensorType.Depth);
+
+            if (depthSensor == null)
+                throw new Exception("Depth sensor not found.");
+
+            using var profileList = depthSensor.GetStreamProfileList();
+            using var profile = profileList.GetVideoStreamProfile(0); // or select based on resolution/fps
+
+            var intrinsics = profile.GetCameraIntrinsics();
+
+            return new CameraIntrinsics
+            {
+                fx = intrinsics.fx,
+                fy = intrinsics.fy,
+                cx = intrinsics.cx,
+                cy = intrinsics.cy,
+                width = intrinsics.width,
+                height = intrinsics.height
+            };
+        }

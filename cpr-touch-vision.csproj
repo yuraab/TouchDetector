@@ -39,14 +39,18 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="ComputeSharp" Version="3.2.0" />
+    <PackageReference Include="DBSCAN.RBush" Version="3.0.0" />
     <PackageReference Include="Emgu.CV" Version="4.11.0.5746" />
     <PackageReference Include="Emgu.CV.runtime.windows" Version="4.11.0.5746" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4188" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="OpenCvSharp4" Version="4.11.0.20250507" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
     <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.0" />
     <PackageReference Include="System.Private.Uri" Version="4.3.2" />
     <PackageReference Include="WinUIEx" Version="2.6.0" />
+	<PackageReference Include="DBSCAN" Version="3.0.0" />  
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ob-sharp\ob-sharp.csproj">
