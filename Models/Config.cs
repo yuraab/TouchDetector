@@ -27,7 +27,6 @@ namespace CPRTouchVision.Models
         )
 
         {
-            // TODO: - Instead of trampolines, use a single rectangle to represent projection touch area
             MinOffset = minOffset;
             MaxOffset = maxOffset; 
             PlaneD = planeD;

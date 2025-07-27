@@ -36,7 +36,7 @@ namespace CPRTouchVision.Models
             Corner1 = wallCorner1;
             Corner2 = wallCorner2;
 
-            // You can optionally precompute bounds for faster volume checks
+            // Otionally precompute bounds for faster volume checks
             _minX = MathF.Min(Corner1.X, Corner2.X);
             _maxX = MathF.Max(Corner1.X, Corner2.X);
             _minY = MathF.Min(Corner1.Y, Corner2.Y);

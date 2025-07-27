@@ -2,6 +2,7 @@
 using Microsoft.UI.Xaml;
 using OBSharp;
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -129,9 +130,20 @@ namespace CPRTouchVision
 #if DEBUG
             try
             {
-                var info = "";
+                // Get stack trace to find parent method
+                var stackTrace = new StackTrace();
+                string parentMethod = "";
+                // stackTrace.GetFrame(1) is the direct caller
+                // stackTrace.GetFrame(2) is the parent of the caller
+                if (stackTrace.FrameCount > 2)
+                {
+                    var parentFrame = stackTrace.GetFrame(2);
+                    var method = parentFrame.GetMethod();
+                    parentMethod = $"[{method.DeclaringType?.FullName}]:[{method.Name}]";
+                }
+                var info = parentMethod;
                 if (file != "")
-                    info = $"[{Path.GetFileName(file)}]";
+                    info += $"[{Path.GetFileName(file)}]";
 
                 if (caller != "")
                     info += $"[{caller}]";

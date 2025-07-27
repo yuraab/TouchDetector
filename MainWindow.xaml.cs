@@ -27,13 +27,19 @@ namespace CPRTouchVision
         private TouchManager _manager = new();
         private float _cw = 1.0f;
         private float _ch = 1.0f;
-        private bool _isClosingTrampoline = false;
+
+#if DEBUG
+        private bool _singleOutPutDone = false;
+#endif
+
+        //private bool _isClosingTrampoline = false;
 
         public MainWindow()
         {
+            _ = _manager.LoadConfig();
             InitializeComponent();
             _manager.Changed += OnManagerChanged;
-            _ = _manager.LoadConfig();
+            
         }
 
         private void OnToggleClicked(object sender, RoutedEventArgs e)
@@ -84,15 +90,22 @@ namespace CPRTouchVision
                 DrawCalibration(canvas);
 
             //if (_manager.IsSelectingTouchZone || !_manager.IsTouchZoneSet)
-            if (_manager.IsTouchZoneSet || _manager.IsSelectingTouchZone)
+            //if (_manager.IsTouchZoneSet || _manager.IsSelectingTouchZone)
+            else if (_manager.IsTouchZoneSet)
             {
-                //App.Log("Defining Touch Zone");
+#if DEBUG
+                if (!_singleOutPutDone)
+                {
+                    App.Log("Display Touch Zone");
+                    _singleOutPutDone = true;
+                }
+#endif
                 DrawTouchZone(canvas);
             }
             //if (_manager.IsRunning)
                 //DrawTrampolines(canvas);
 
-            if (_manager.IsCalibrating || _manager.IsSelectingTouchZone)
+            else if (_manager.IsCalibrating || _manager.IsSelectingTouchZone)
                 DrawCursor(canvas);
         }
 
@@ -150,8 +163,8 @@ namespace CPRTouchVision
                 Color = SKColors.Orange.WithAlpha(128),
                 IsAntialias = true
             };
-            var p1 = _manager.TouchZoneCornerWorld1.ToSKPoint();
-            var p2 = _manager.TouchZoneCornerWorld2.ToSKPoint();
+            var p1 = _manager.TouchZoneCornerScreen1;
+            var p2 = _manager.TouchZoneCornerScreen2;
 
             var left = Math.Min(p1.X, p2.X);
             var right = Math.Max(p1.X, p2.X);
@@ -347,10 +360,12 @@ namespace CPRTouchVision
         private void DrawCursor(SKCanvas canvas)
         {
             var color = SKColors.GreenYellow;
-
+            /*
             if (_manager.IsAddingTrampoline)
                 color = _manager.CurrentTrampoline.Color.ToSKColor();
-            else if (_manager.IsSelectingTouchZone)
+            */
+
+            if (_manager.IsSelectingTouchZone)
                 color = SKColors.Orange;
 
             var paint = new SKPaint()
@@ -363,16 +378,7 @@ namespace CPRTouchVision
             // Calibration line
             if (_manager.IsCalibrating && _manager.CalibrationPoints.Length > 0)
                 canvas.DrawLine(_manager.CalibrationPoints.Last().ToSKPoint(), _manager.Cursor, paint);
-            // Trampoline line
-            else if (_manager.IsAddingTrampoline && _manager.CurrentTrampoline.Vertices.Count > 0)
-            {
-                canvas.DrawLine(_manager.CurrentTrampoline.Vertices.Last().Screen, _manager.Cursor, paint);
 
-                if (_isClosingTrampoline)
-                {
-                    canvas.DrawCircle(_manager.CurrentTrampoline.Vertices.First().Screen, 12, paint);
-                }
-            }
             // Touch zone definition line and preview rectangle
             else if (_manager.IsSelectingTouchZone && !_manager.TouchZoneCorner1.IsEmpty)
                 DrawTouchZoneByCursor(canvas);
@@ -392,24 +398,6 @@ namespace CPRTouchVision
                 var y = (int)(point.Position.Y * s / _ch * _manager.FH);
                 _manager.Cursor = new(x, y);
 
-                if (_manager.IsAddingTrampoline)
-                {
-                    var count = _manager.CurrentTrampoline.Vertices.Count;
-
-                    if (count > 3)
-                    {
-                        var first = _manager.CurrentTrampoline.Vertices.First().Screen;
-
-                        if (SKPoint.Distance(first, _manager.Cursor) < 5)
-                            _isClosingTrampoline = true;
-                        else
-                            _isClosingTrampoline = false;
-                    }
-                    else
-                        _isClosingTrampoline = false;
-                }
-                else
-                    _isClosingTrampoline = false;
             }
         }
 
@@ -422,10 +410,6 @@ namespace CPRTouchVision
                 var y = (int)(point.Position.Y * s / _ch * _manager.FH);
                 string message = $"point with x={x}, y={y}";
 
-                if (_isClosingTrampoline)
-                {
-                    _manager.CloseTrampoline();
-                }
                 if (_manager.IsCalibrating)
                 {
 #if DEBUG
@@ -440,26 +424,9 @@ namespace CPRTouchVision
 #endif
                     _manager.AddTouchZonePoint(x, y);
                 }
-                else if (_manager.IsAddingTrampoline)
-                {
-                    _manager.AddTrampolinePoint(x, y);
-                }
+
             }
         }
-
-        private void OnAddTrampolineClicked(object sender, RoutedEventArgs e)
-        {
-            _manager.StartAddingTrampoline();
-        }
-
-/*
-        private void OnDeleteTrampolineClicked(object sender, RoutedEventArgs e)
-        {
-            if (sender is MenuFlyoutItem item && item.Tag is int id)
-            {
-                _manager.RemoveTrampolineWith(id);
-            }
-        }
-*/
+ 
     }
 }

@@ -92,12 +92,6 @@ namespace CPRTouchVision.Models
         bool _isTouchZone = false;
 
         [ObservableProperty]
-        bool _isAddingTrampoline = false;
-
-        [ObservableProperty]
-        bool _canAddTrampolines = false;
-
-        [ObservableProperty]
         int _offset = 15;
 
         [ObservableProperty]
@@ -114,9 +108,6 @@ namespace CPRTouchVision.Models
         private CaptureLoop? _captureLoop;
 
         // Prosessing the data captured
-        private TrackingLoop? _trackingLoop;
-
-        // Prosessing the data captured
         private TouchLoop? _touchLoop;
 
         private volatile bool _isProcessingTouch = false;
@@ -126,7 +117,6 @@ namespace CPRTouchVision.Models
 
         private List<Vector3> _calibrationPoints = new();
         private List<Vector3> _touchZonePoints = new();
-        private ObservableCollection<Trampoline> _trampolines = new();
 
         private TouchTracker _tracker;
 
@@ -149,28 +139,18 @@ namespace CPRTouchVision.Models
         private int _frameHeight = 576;
 
         private int _fsize;
-        //private OBDepthCameraParam _depthIntrinsics;
+
         private SKImageInfo _colorBitmapInfo;
         private DoubleBufferedBitmap _colorBitmap;
         private DoubleBufferedBitmap _depthBitmap;
         private Dictionary<int, float> _elevationOffsets = new();
-        private int _currentTrampolineIndex = -1;
+
 
         private readonly object _depthLock = new object();
         private readonly object _bodiesLock = new object();
         private readonly int _defaltMaxOffset = 15;
         private readonly int _defaltMinOffset = 1;
         private OSCClient _oscClient = new();
-
-        private SKColor[] _trampolineColors =
-        [
-            new SKColor(0xFF8F51FA),
-            new SKColor(0xFF1E60F9),
-            new SKColor(0xFF5FC8EE),
-            new SKColor(0xFF82C90F),
-            new SKColor(0xFFE3BF0C),
-            new SKColor(0xFFEC6516)
-        ];
 
         public DoubleBufferedBitmap ColorBitmap => _colorBitmap;
         public DoubleBufferedBitmap DepthBitmap => _depthBitmap;
@@ -195,17 +175,15 @@ namespace CPRTouchVision.Models
         public Vector3 TouchZoneCornerWorld2 => _touchZoneCorner2.World;
         public SKPoint TouchZoneCornerScreen2 => _touchZoneCorner2.Screen;
 
-
-        public ObservableCollection<Trampoline> Trampolines => _trampolines;
         public EventHandler<TouchManagerEventType>? Changed;
-        public Trampoline CurrentTrampoline => _trampolines[_currentTrampolineIndex];
+
         private UdpClient _client = new();
         private IPEndPoint _endpoint = new IPEndPoint(IPAddress.Loopback, 12345);
         private CalibrationGeometry _sourceCamera;
         private List<TouchCluster> _clusters = [];
         private CalibrationGeometry _sourseCameraHandleTouch = CalibrationGeometry.Unknown;
+        private bool _isConfigGotten = false; 
         public const int CalibrationPointsCount = 3;
-        //public const int TouchZonePointsCount = 2;
 
         public TouchManager()
         {
@@ -237,8 +215,7 @@ namespace CPRTouchVision.Models
         private void Start()
         {
             if (IsRunning || !OBSharp.Sensor.Device.TryOpen(out var device)) return;
-            //Sdk.IsBodyTrackingRuntimeAvailable(out var message);
-            //Debug.WriteLine(message);
+
             _captureLoop = new(device);
             _captureLoop.CaptureReady += OnCaptureReady;
             _captureLoop.LoopFailed += OnLoopFailed;
@@ -247,10 +224,6 @@ namespace CPRTouchVision.Models
 #if DEBUG
             App.Log($"Calibration gotten with Depth Mode: {_calibration.DepthMode} :{_calibration.DepthCameraCalibration}");
 #endif
-            //Lines below to capture body
-            //_trackingLoop = new(_calibration);
-            //_trackingLoop.BodyFrameReady += OnBodyFrameReady;
-            //_trackingLoop.LoopFailed += OnLoopFailed;
 
             _transformation = new Transformation(_calibration);
 
@@ -287,14 +260,6 @@ namespace CPRTouchVision.Models
             _tracker = new(detectableSpace, _calibration);
         }
 
-        private void OnBodyFrameReady(object? sender, BodyFrameEventArgs e)
-        {
-            // used to be body frame processing logic to display skeletons, joints, jumps, etc.
-
-            // TODO: - use OSCClient to send touch events instead of body data.
-            // Task.Run(() => _oscClient.Send(bodies));
-            // Changed?.Invoke(this, TouchManagerEventType.NewFrame);
-        }
 
         private void OnTouchFrameReady(object? sender, TouchLoopEventArgs e)
         {
@@ -465,7 +430,7 @@ namespace CPRTouchVision.Models
                 _captureLoop.Dispose();
                 _captureLoop = null;
             }
-
+            /*
             if (_trackingLoop != null)
             {
                 _trackingLoop.BodyFrameReady -= OnBodyFrameReady;
@@ -473,7 +438,7 @@ namespace CPRTouchVision.Models
                 _trackingLoop.Dispose();
                 _trackingLoop = null;
             }
-
+            */
             StopTouchLoop();
 
             _colorBitmap = new(_colorBitmapInfo);
@@ -489,7 +454,6 @@ namespace CPRTouchVision.Models
                 return;
 
             _calibrationPoints.Clear();
-            _trampolines.Clear();
             IsFloorLevelSet = false;
             IsWallPlaneSet = true;
             IsCalibrating = true;
@@ -511,65 +475,6 @@ namespace CPRTouchVision.Models
 
             ResetTouchZone();
             IsSelectingTouchZone = true;
-        }
-
-        public void StartAddingTrampoline()
-        {
-            if (!IsRunning || !IsFloorLevelSet || _trampolines.Count == 6)
-                return;
-
-            _currentTrampolineIndex = GetFirstEmptyId();
-            if (_currentTrampolineIndex > -1)
-            {
-                _trampolines.Insert(_currentTrampolineIndex, new Trampoline(_currentTrampolineIndex, _trampolineColors[_currentTrampolineIndex].ToColor()));
-                IsAddingTrampoline = true;
-            }
-        }
-
-        public void RemoveTrampolineWith(int id)
-        {
-            var index = _trampolines.ToList().FindIndex(t => t.Id == id);
-
-            if (index >= 0 && index < _trampolines.Count)
-            {
-                _trampolines.RemoveAt(index);
-                _ = SaveConfig();
-            }
-
-            if (IsAddingTrampoline)
-            {
-                if (_currentTrampolineIndex == index)
-                    IsAddingTrampoline = false;
-                else if (index < _currentTrampolineIndex)
-                    _currentTrampolineIndex--;
-            }
-        }
-
-        private int GetFirstEmptyId()
-        {
-            int result = -1;
-
-            if (_trampolines.Count > 0)
-            {
-                int i = 0;
-
-                foreach (var trampoline in _trampolines)
-                {
-                    if (i != trampoline.Id)
-                    {
-                        result = i;
-                        break;
-                    }
-                    i++;
-                }
-
-                if (result == -1)
-                    result = _trampolines.Count();
-            }
-            else
-                result = 0;
-
-            return result;
         }
 
         public static async Task<T?> GetConfigValue<T>(string propertyName)
@@ -598,11 +503,16 @@ namespace CPRTouchVision.Models
 
         public async Task LoadConfig()
         {
+            _isConfigGotten = false;
+
             if (File.Exists(CONFIG_PATH))
             {
                 var bytes = await File.ReadAllBytesAsync(CONFIG_PATH);
                 var json = Encoding.UTF8.GetString(bytes);
 
+#if DEBUG
+                App.Log($"Loaded Data: {json}");
+#endif
                 if (JsonConvert.DeserializeObject<Config>(json) is Config config)
                 {
                     if (config.PlaneD.HasValue && config.PlaneNormal.HasValue)
@@ -631,10 +541,12 @@ namespace CPRTouchVision.Models
                     }
                 }
             }
+            _isConfigGotten = true;
         }
 
         public async Task SaveConfig()
         {
+            if (!_isConfigGotten) return; // To avoid a call SaveConfig before Config was loaded
             var config = new Config(
                 MinOffset,
                 MaxOffset,
@@ -646,6 +558,9 @@ namespace CPRTouchVision.Models
                 _cameraRotation.IsIdentity ? null : _cameraRotation
             );
             var json = JsonConvert.SerializeObject(config) ?? "";
+#if DEBUG
+            App.Log($"Saved Data:{json}");
+#endif
             var data = Encoding.UTF8.GetBytes(json);
             Directory.CreateDirectory(CONFIG_FOLDER);
             await File.WriteAllBytesAsync(CONFIG_PATH, data);
@@ -677,86 +592,6 @@ namespace CPRTouchVision.Models
             }
         }
 
-        private async void FitPlane()
-        {
-            if (IsFittingPlane)
-                return;
-
-            IsFittingPlane = true;
-
-            int minX = int.MaxValue;
-            int minY = int.MaxValue;
-            int maxX = int.MinValue;
-            int maxY = int.MinValue;
-
-            foreach (var point in _calibrationPoints)
-            {
-                minX = Math.Min((int)point.X, minX);
-                minY = Math.Min((int)point.Y, minY);
-                maxX = Math.Max((int)point.X, maxX);
-                maxY = Math.Max((int)point.Y, maxY);
-            }
-
-            int w = maxX - minX;
-            int h = maxY - minY;
-            DepthPoint[] result = new DepthPoint[w * h];
-
-            lock (_depthLock)
-            {
-                Parallel.For(0, result.Length, (i) =>
-                {
-                    int x = minX + i % w;
-                    int y = minY + i / w;
-                    int index = y * _fw + x;
-                    float d = (float)_depthData[index];
-                    var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
-                    if (d > 0 && world != null)
-                    {
-                        result[i] = DepthPoint.From(
-                            x,
-                            y,
-                            world.Value.X,
-                            world.Value.Y,
-                            world.Value.Z
-                        );
-                    }
-                    else
-                        result[i] = DepthPoint.Empty;
-                });
-            }
-
-            var points = result.Where((item) => !item.IsEmpty).ToArray();
-            (_planeD, _planeNormal) = await Task.Run(() => FitPlaneSVD2(points));
-
-            Debug.WriteLine($"Plane normal: {_planeNormal}");
-            Debug.WriteLine($"Plane equation: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
-
-            if (_captureLoop?.GetCameraRotation() is Vector3 rotation)
-            {
-                _cameraRotation = System.Numerics.Quaternion.Inverse(System.Numerics.Quaternion.CreateFromYawPitchRoll(rotation.Y, rotation.X, rotation.Z));
-                var rad2deg = 180 / MathF.PI;
-                Debug.WriteLine($"Camera Rotation: {rotation.X * rad2deg:F4} {rotation.Y * rad2deg:F4} {rotation.Z * rad2deg:F4}");
-            }
-
-            /* Get Camera Position */
-            // Calculate the numerator: |a*x + b*y + c*z + d|
-            float numerator = MathF.Abs(Vector3.Dot(_planeNormal, Vector3.Zero) + _planeD);
-
-            // Calculate the denominator: sqrt(a^2 + b^2 + c^2)
-            float denominator = _planeNormal.Length();
-
-            if (denominator == 0)
-            {
-                throw new ArgumentException("The plane normal cannot be a zero vector.");
-            }
-
-            float distance = numerator / denominator;
-            _cameraPosition = new Vector3(0, distance, 0);
-
-            await SaveConfig();
-            IsFloorLevelSet = true;
-            IsFittingPlane = false;
-        }
 
         bool IsPointOnPlane(Vector3 point, Vector3 planeNormal, float planeDistance)
         {
@@ -936,7 +771,7 @@ namespace CPRTouchVision.Models
 #endif
         }
 
-
+/*
         private (float, Vector3) FitPlaneSVD(DepthPoint[] points)
         {
             int count = points.Length;
@@ -976,7 +811,7 @@ namespace CPRTouchVision.Models
 
             return (d, normal);
         }
-
+*/
         private (float, Vector3) FitPlaneSVD2(DepthPoint[] points)
         {
             int count = points.Length;
@@ -1044,34 +879,6 @@ namespace CPRTouchVision.Models
             float d = -Vector3.Dot(normal, centroid);
 
             return (d, normal);
-        }
-
-        public void AddTrampolinePoint(int x, int y)
-        {
-            if (!IsAddingTrampoline)
-                return;
-
-            var d = GetDepth(x, y);
-            var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
-
-            if (d > 0 && world != null)
-                CurrentTrampoline.Add(DepthPoint.From(
-                    x,
-                    y,
-                    world.Value.X,
-                    world.Value.Y,
-                    world.Value.Z
-                ));
-        }
-
-        public void CloseTrampoline()
-        {
-            if (!IsAddingTrampoline)
-                return;
-
-            CurrentTrampoline.Close();
-            _ = SaveConfig();
-            IsAddingTrampoline = false;
         }
 
         public ushort GetDepth(SKPoint point)
@@ -1146,7 +953,7 @@ namespace CPRTouchVision.Models
         {
             return ProjectToFloor(point.World);
         }
-
+/*
         private IList<Vector3> ProjectTrampolineToFloor(Trampoline trampoline)
         {
             var result = new List<Vector3>();
@@ -1166,6 +973,7 @@ namespace CPRTouchVision.Models
             var right = ProjectToFloor(skeleton.FootRight.PositionMm.ToVector3());
             return (left, right);
         }
+
 
         private bool IsSkeletonInsideTrampoline(Trampoline trampoline, Skeleton skeleton)
         {
@@ -1200,7 +1008,7 @@ namespace CPRTouchVision.Models
 
             return false;
         }
-
+*/
         private void CheckIsReadyRunTouchLoop()
         {
             IsReadyTrackTouch = IsWallPlaneSet && IsTouchZoneSet && (MaxOffset > MinOffset);
@@ -1213,7 +1021,6 @@ namespace CPRTouchVision.Models
             // Enable the touch zone toggle only when the app is running, the wall plane is defined,
             // we are not currently selecting the touch zone, and we are not fitting a plane.
             IsTouchZoneToggleEnabled = IsRunning && IsWallPlaneSet && !IsSelectingTouchZone && !IsFittingPlane;
-            CanAddTrampolines = IsRunning && IsFloorLevelSet && !IsAddingTrampoline;
             CheckIsReadyRunTouchLoop();
         }
 
@@ -1268,23 +1075,17 @@ namespace CPRTouchVision.Models
             CheckIsReadyRunTouchLoop();
         }
 
-        partial void OnIsAddingTrampolineChanged(bool value)
-        {
-            CanAddTrampolines = IsRunning && IsFloorLevelSet && !IsAddingTrampoline;
-        }
 
         partial void OnIsFloorLevelSetChanged(bool value)
         {
             FloorLevelStatus = value ? "Set" : "Not Set";
             FloorLevelForeground = new SolidColorBrush(value ? Colors.Green : Colors.OrangeRed);
-            CanAddTrampolines = IsRunning && IsFloorLevelSet && !IsAddingTrampoline;
             CheckIsReadyRunTouchLoop();
         }
         partial void OnIsTouchZoneSetChanged(bool value)
         {
             TouchZoneStatus = value ? "Set" : "Not Set";
             TouchZoneForeground = new SolidColorBrush(value ? Colors.Green : Colors.OrangeRed);
-            //CanAddTrampolines = IsRunning && IsFloorLevelSet && !IsAddingTrampoline;
             CheckIsReadyRunTouchLoop();
         }
 
@@ -1380,12 +1181,6 @@ namespace CPRTouchVision.Models
     {
         NewFrame,
         CalibrationUpdate
-    }
-
-    public enum ImageLayer
-    {
-        Color,
-        Depth
     }
 
     public static class Extensions

@@ -1,13 +1,9 @@
-﻿//using Dbscan;
-using Emgu.CV;
-using OBSharp;
-using OpenCvSharp;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Timers;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+
 
 namespace CPRTouchVision.Models
 {
@@ -73,14 +69,7 @@ namespace CPRTouchVision.Models
             return $"TouchCluster(Center: {Center}, Radius: {Radius:F2}, Timestamp: {dt:yyyy-MM-dd HH:mm:ss.fff})";
         }
     }
-/*
-    public class DbscanPoint : IPointData
-    {
-        public int Id { get; set; }
 
-        public Dbscan.Point Point { get; set; }
-    }
-*/
     public class TouchClusterManager
     {
         private readonly double _eps;
@@ -111,20 +100,13 @@ namespace CPRTouchVision.Models
             
             var dbscan = new DbscanCustom(_eps, _minPoints);
             var clusters = dbscan.Fit(dbscanPoints);
-           /*
-            //var dbscanPoints = points.Select(p => new double[] { p.X, p.Y, p.Z });
-            double[][] points3D = points.Select(p => new double[] { p.X, p.Y, p.Z }).ToArray();
-            var clusters = DbscanCustom.Fit(
-                            points3D,
-                            epsilon: 1.0,
-                            minimumPointsPerCluster: 4);
-            */
+
             var result = new List<TouchCluster>();
 
             foreach (var cluster in clusters)
             {
                 var clusterPoints = cluster.Select(dp => points[dp.Id]).ToList();
-                if (clusterPoints.Count == 0)
+                if (clusterPoints.Count < _minPoints)
                     continue;
 
                 result.Add(new TouchCluster(clusterPoints, timestamp));
@@ -236,17 +218,12 @@ namespace CPRTouchVision.Models
             }
         }
 
-        private List<DbscanCustomPoint> RegionQuery(List<DbscanCustomPoint> points, DbscanCustomPoint point)
+        private List<DbscanCustomPoint> RegionQuery(List<DbscanCustomPoint> points, DbscanCustomPoint center)
         {
-            var neighbors = new List<DbscanCustomPoint>();
-            foreach (var p in points)
-            {
-                if (Distance(point.Point, p.Point) <= _eps)
-                {
-                    neighbors.Add(p);
-                }
-            }
-            return neighbors;
+
+            return points.Where(p =>
+                Distance(p.Point, center.Point) <= _eps
+            ).ToList();
         }
 
         private double Distance(double[] a, double[] b)
