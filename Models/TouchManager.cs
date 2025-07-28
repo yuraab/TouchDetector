@@ -185,9 +185,10 @@ namespace CPRTouchVision.Models
         private bool _isConfigGotten = false;
 #if DEBUG
         private bool _isSingleOutputDone;
+        
 #endif
         public const int CalibrationPointsCount = 3;
-
+        private bool _isReadyReceiveNewCapture = false;
         public TouchManager()
         {
             _fsize = _fw * _fh;
@@ -258,12 +259,18 @@ namespace CPRTouchVision.Models
             _touchLoop = new(detectableSpace, _calibration);
             _touchLoop.TouchFrameReady += OnTouchFrameReady;
             _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
+            _touchLoop.ReadyForNewImage += OnReadyForNewImage;
             _touchLoop.Run();
             IsRunningTrackTouch = true;
+            _isReadyReceiveNewCapture = true;
 
             //_tracker = new(detectableSpace, _calibration);
         }
 
+        private void OnReadyForNewImage(object? sender, bool isReady)
+        {
+            if (isReady) _isReadyReceiveNewCapture = true;
+        }
 
         private void OnTouchFrameReady(object? sender, TouchLoopEventArgs e)
         {
@@ -272,7 +279,7 @@ namespace CPRTouchVision.Models
             if (e.Clusters == null || e.Clusters.Count == 0) return;
 
             string message = string.Join(";", e.Clusters.Select(c =>
-                $"[{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2} R:{c.Radius:F2} µs:{c.TimestampMicroseconds}]"));
+                $"[Center<{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2}> Radius:{c.Radius:F2} Point Count:{c.Count}  µs:{c.TimestampMicroseconds}]"));
 
             App.Log(message);
 
@@ -331,50 +338,50 @@ namespace CPRTouchVision.Models
 
             //_touchLoop?.Enqueue(e.Capture);
 
-            if (!_isProcessingTouch)
+            if (_isReadyReceiveNewCapture)
             {
-                _isProcessingTouch = true;
-
+                _ = _touchLoop.TrySendImage(clonedCapture);
+            }
                 //Image clonedImage = CloneImage(clonedCapture.ColorImage);
+                /*
                 Image clonedImage = CloneImage(clonedCapture.DepthImage);
                 _sourseCameraHandleTouch = CalibrationGeometry.Depth;
                 //If unsuccessful attempt to send
-                if (!_touchLoop.TrySendImage(clonedImage, _sourseCameraHandleTouch))
+                if (!_touchLoop.TrySendImage(clonedImage))
                     _isProcessingTouch = false;
+                */
+                /*
+                                Task.Run(() =>
+                                {
+                                    try
+                                    {
+                                        if (_tracker.ProcessTouchPresence(clonedImage, _sourseCameraHandleTouch, out _clusters))
+                                        {
+                                            if (_clusters == null || _clusters.Count == 0) return;
 
-/*
-                Task.Run(() =>
-                {
-                    try
-                    {
-                        if (_tracker.ProcessTouchPresence(clonedImage, _sourseCameraHandleTouch, out _clusters))
-                        {
-                            if (_clusters == null || _clusters.Count == 0) return;
+                                            string message = string.Join(";", _clusters.Select(c =>
+                                                $"[{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2} R:{c.Radius:F2} Count:{c.Count} µs:{c.TimestampMicroseconds}]"));
 
-                            string message = string.Join(";", _clusters.Select(c =>
-                                $"[{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2} R:{c.Radius:F2} Count:{c.Count} µs:{c.TimestampMicroseconds}]"));
-
-                            App.Log(message);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        App.Log($"[OnCaptureReady] ERROR during ProcessTouchPresence: {ex.Message}");
-                    }
-                    finally
-                    {
-                        clonedCapture.Dispose();
-                        _isProcessingTouch = false;
-#if DEBUG
-                        //now = DateTime.Now;
-                        //time = now.ToString("HH:mm:ss.fff");
-                        //App.Log($"Stop process image {time}");
-#endif
-                    }
-                });
-*/
-
-            }
+                                            App.Log(message);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        App.Log($"[OnCaptureReady] ERROR during ProcessTouchPresence: {ex.Message}");
+                                    }
+                                    finally
+                                    {
+                                        clonedCapture.Dispose();
+                                        _isProcessingTouch = false;
+                #if DEBUG
+                                        //now = DateTime.Now;
+                                        //time = now.ToString("HH:mm:ss.fff");
+                                        //App.Log($"Stop process image {time}");
+                #endif
+                                    }
+                                });
+                }
+                */
 
 
             // For now i'll just fire TouchManagerEventType.NewFrame event to display video output in the main window.
@@ -418,7 +425,7 @@ namespace CPRTouchVision.Models
             if (e.Clusters == null || e.Clusters.Count == 0) return;
 
             string message = string.Join(";", e.Clusters.Select(c =>
-                $"[{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2} R:{c.Radius:F2} µs:{c.TimestampMicroseconds}]"));
+                $"[Center<{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2}> R:{c.Radius:F2} Point Count:{c.Count} µs:{c.TimestampMicroseconds}]"));
             
             App.Log(message);
         }

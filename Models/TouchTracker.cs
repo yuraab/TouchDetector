@@ -2,6 +2,7 @@
 using CPRTouchVision.Models;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media;
 using OBSharp;
 using OBSharp.Sensor;
 using System;
@@ -30,13 +31,17 @@ namespace CPRTouchVision.Models
         private readonly AutoResetEvent _imageAvailable = new(false);    // Wait for image
         private readonly CancellationTokenSource _cts = new();
 
+        private readonly object _queueLock = new();
+        private readonly Queue<(OBSharp.Sensor.Image Image, CalibrationGeometry Geometry)> _imageQueue = new();
+
         private bool _isRunning;
         private bool _isDisposed;
         private bool _isCountPointsDisplayed = false;
+        private int _maxQueueSize;
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
-        public TouchTracker_(TouchVolume volume, Calibration calibration)
+        public TouchTracker_(TouchVolume volume, Calibration calibration, int maxQueueSize = 5)
         {
             _volume = volume;
             _calibration = calibration;
@@ -51,6 +56,7 @@ namespace CPRTouchVision.Models
 #if DEBUG
             App.Log("TouchTracker created.");
 #endif
+            _maxQueueSize = maxQueueSize;
         }
 
         /// <summary>
@@ -65,24 +71,29 @@ namespace CPRTouchVision.Models
             _thread.Start();
 
 #if DEBUG
-            App.Log("TouchTracker started.");
+            //App.Log("TouchTracker started.");
 #endif
         }
 
         /// <summary>
         /// Send a new image for processing. Waits until tracker is ready to receive it.
         /// </summary>
-        public void EnqueueImage(OBSharp.Sensor.Image image, CalibrationGeometry calibrationGeometry)
+        public bool EnqueueImage(OBSharp.Sensor.Image image, CalibrationGeometry calibrationGeometry)
         {
-            _readyToReceive.WaitOne();
 
-            // Transfer ownership of image to background thread
-            _currentImage = image;
-            _calibrationGeometry = calibrationGeometry;
-            _imageAvailable.Set();
+            lock (_queueLock)
+            {
+                if (_imageQueue.Count >= _maxQueueSize)
+                {
 #if DEBUG
-            App.Log("Tracker recieved image");
+                    App.Log("Tracker queue full, rejecting image.");
 #endif
+                    return false;
+                }
+                // Save image and geometry for later processing
+                _imageQueue.Enqueue((image, calibrationGeometry));
+                return true;
+            }
 
         }
 
@@ -91,60 +102,83 @@ namespace CPRTouchVision.Models
         /// </summary>
         private void ProcessLoop()
         {
-            try
+#if DEBUG
+            //App.Log($"TouchTracker processing loop started. IsRunning = {_isRunning}");
+#endif
+
+            while (_isRunning)
             {
-                while (!_cts.Token.IsCancellationRequested)
+#if DEBUG
+                //App.Log("TouchTracker loop tick.");
+#endif
+                //_imageAvailable.WaitOne();
+
+                while (true)
                 {
-                    int triggered = WaitHandle.WaitAny(new WaitHandle[] { _imageAvailable, _cts.Token.WaitHandle });
-                    if (triggered == 1) // Cancellation
-                        break;
 
-                    var image = _currentImage;
-                    _currentImage = null;
+                    (OBSharp.Sensor.Image image, CalibrationGeometry geometry)? item = null;
 
-                    if (image == null)
+                    lock (_queueLock)
                     {
+                        if (_imageQueue.Count > 0)
+                        {
+                            item = _imageQueue.Dequeue();
+                        }
+                        else
+                        {
+                            break;
+                        }
+
+                        if (item != null)
+                        {
+                            try
+                            {
 #if DEBUG
-                        App.Log("Image == null!");
+                                //App.Log("Tracker processing image...");
 #endif
-                        continue;
+                                var (image, geometry) = item.Value;
+
+                                // Process the image
+                                ProcessImage(image, geometry);
+
+                                // Then dispose
+                                image.Dispose();
+
+                                // This is CRITICAL: allow next image to be enqueued
+                                //_readyToReceive.Set();
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine($"[TouchTracker] Processing failed: {ex}");
+                            }
+                        }
+                        else
+                        {
+                            Thread.Sleep(1); // avoid tight loop when queue is empty
+                        }
                     }
-#if DEBUG
-                    App.Log("Call point filter");
-#endif
-                    var points = Extract3DPointsInsideVolume(image, _calibrationGeometry, out long timestamp);
-
-                    if (!_isCountPointsDisplayed)
-                    {
-                        App.Log($"[TouchTracker] Filtered points count: {points.Count}");
-                        _isCountPointsDisplayed = true;
-                    }
-
-                    var clusters = _clusterManager.DetectClusters(points);
-
-                    if (clusters?.Count > 0)
-                    {
-                        var frame = new TouchFrame(clusters, timestamp);
-                        TouchFrameReady?.Invoke(this, frame);
-                    }
-
-                    // Dispose image once processing is complete
-                    image.Dispose();
-
-                    // Signal we're ready for the next image
-                    _readyToReceive.Set();
-#if DEBUG
-                    App.Log("Image processed");
-#endif
                 }
             }
-            catch (OperationCanceledException)
+
+        }
+
+
+        private void ProcessImage(OBSharp.Sensor.Image image, CalibrationGeometry geometry)
+        {
+            var points = Extract3DPointsInsideVolume(image, _calibrationGeometry, out long timestamp);
+#if DEBUG
+            if (!_isCountPointsDisplayed || points.Count > 100)
             {
-                App.Log("[TouchTracker] Cancellation requested.");
+                App.Log($"[TouchTracker] Filtered points count: {points.Count}");
+                _isCountPointsDisplayed = true;
             }
-            catch (Exception ex)
+#endif
+            var clusters = _clusterManager.DetectClusters(points);
+
+            if (clusters?.Count > 0)
             {
-                Debug.WriteLine("[TouchTracker] Error in processing loop: " + ex);
+                var frame = new TouchFrame(clusters, timestamp);
+                TouchFrameReady?.Invoke(this, frame);
             }
         }
 
@@ -189,11 +223,40 @@ namespace CPRTouchVision.Models
             return result;
         }
 
+        public void Stop()
+        {
+            _isRunning = false;
+
+            // Wake up the loop if it's waiting
+            _imageAvailable.Set();
+
+            // Wait for background thread to exit
+            _thread?.Join();
+
+            // Dispose any remaining images in the queue
+            lock (_queueLock)
+            {
+                while (_imageQueue.Count > 0)
+                {
+                    var (image, _) = _imageQueue.Dequeue();
+                    image.Dispose();
+                }
+            }
+
+#if DEBUG
+            App.Log("TouchTracker shutdown complete.");
+#endif
+        }
+
         public void Dispose()
         {
+
             if (_isDisposed) return;
             _isDisposed = true;
 
+            Stop();
+
+            /*
             _cts.Cancel();
 
             if (_thread.IsAlive)
@@ -202,6 +265,7 @@ namespace CPRTouchVision.Models
             _cts.Dispose();
             _readyToReceive.Dispose();
             _imageAvailable.Dispose();
+            */
 
 #if DEBUG
             App.Log("TouchTracker disposed.");
