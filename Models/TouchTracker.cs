@@ -1,6 +1,7 @@
 ﻿using CPRTouchVision;
 using CPRTouchVision.Models;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using OBSharp;
 using OBSharp.Sensor;
 using System;
@@ -18,51 +19,104 @@ namespace CPRTouchVision.Models
 {
     public sealed class TouchTracker_ : IDisposable
     {
-        private readonly BlockingCollection<Capture> _captureQueue;
-        private readonly BlockingCollection<TouchFrame> _resultQueue;
-        private readonly CancellationTokenSource _cts = new();
         private readonly TouchVolume _volume;
         private readonly TouchClusterManager _clusterManager;
-        private readonly Thread _processingThread;
         private readonly Calibration _calibration;
+
+        private Thread _thread;
+        private OBSharp.Sensor.Image? _currentImage;
+        private CalibrationGeometry _calibrationGeometry;
+        private readonly AutoResetEvent _readyToReceive = new(true);     // Initially ready
+        private readonly AutoResetEvent _imageAvailable = new(false);    // Wait for image
+        private readonly CancellationTokenSource _cts = new();
+
+        private bool _isRunning;
+        private bool _isDisposed;
         private bool _isCountPointsDisplayed = false;
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
-        public TouchTracker_(TouchVolume volume, Calibration calibration, int maxQueueSize = 10)
+        public TouchTracker_(TouchVolume volume, Calibration calibration)
         {
             _volume = volume;
-            _clusterManager = new TouchClusterManager();
             _calibration = calibration;
-            _captureQueue = new(maxQueueSize);
-            _resultQueue = new();
-            _processingThread = new Thread(ProcessLoop) { IsBackground = true };
+            _clusterManager = new TouchClusterManager();
+
+            _thread = new Thread(ProcessLoop)
+            {
+                IsBackground = true,
+                Name = "TouchTrackerLoop"
+            };
 
 #if DEBUG
-            App.Log("TouchTracker initialized!");
+            App.Log("TouchTracker created.");
 #endif
-            _processingThread.Start();
         }
 
-        public void EnqueueCapture(Capture capture)
+        /// <summary>
+        /// Start the background processing loop.
+        /// </summary>
+        public void Run()
         {
-            if (!_captureQueue.TryAdd(capture, 10))
-                App.Log("WARNING: Touch capture queue full. Frame dropped.");
+            if (_isRunning)
+                throw new InvalidOperationException("TouchTracker is already running.");
+
+            _isRunning = true;
+            _thread.Start();
+
+#if DEBUG
+            App.Log("TouchTracker started.");
+#endif
         }
 
-        public bool TryPopResult(out TouchFrame? frame) => _resultQueue.TryTake(out frame);
+        /// <summary>
+        /// Send a new image for processing. Waits until tracker is ready to receive it.
+        /// </summary>
+        public void EnqueueImage(OBSharp.Sensor.Image image, CalibrationGeometry calibrationGeometry)
+        {
+            _readyToReceive.WaitOne();
 
+            // Transfer ownership of image to background thread
+            _currentImage = image;
+            _calibrationGeometry = calibrationGeometry;
+            _imageAvailable.Set();
+#if DEBUG
+            App.Log("Tracker recieved image");
+#endif
+
+        }
+
+        /// <summary>
+        /// The main processing loop that runs in a background thread.
+        /// </summary>
         private void ProcessLoop()
         {
             try
             {
-                foreach (var capture in _captureQueue.GetConsumingEnumerable(_cts.Token))
+                while (!_cts.Token.IsCancellationRequested)
                 {
-                    var points = Extract3DPointsInsideVolume(capture, out long timestamp);
+                    int triggered = WaitHandle.WaitAny(new WaitHandle[] { _imageAvailable, _cts.Token.WaitHandle });
+                    if (triggered == 1) // Cancellation
+                        break;
+
+                    var image = _currentImage;
+                    _currentImage = null;
+
+                    if (image == null)
+                    {
+#if DEBUG
+                        App.Log("Image == null!");
+#endif
+                        continue;
+                    }
+#if DEBUG
+                    App.Log("Call point filter");
+#endif
+                    var points = Extract3DPointsInsideVolume(image, _calibrationGeometry, out long timestamp);
 
                     if (!_isCountPointsDisplayed)
                     {
-                        App.Log($"Count of filtering points = {points.Count}");
+                        App.Log($"[TouchTracker] Filtered points count: {points.Count}");
                         _isCountPointsDisplayed = true;
                     }
 
@@ -71,24 +125,34 @@ namespace CPRTouchVision.Models
                     if (clusters?.Count > 0)
                     {
                         var frame = new TouchFrame(clusters, timestamp);
-                        _resultQueue.Add(frame);
                         TouchFrameReady?.Invoke(this, frame);
                     }
+
+                    // Dispose image once processing is complete
+                    image.Dispose();
+
+                    // Signal we're ready for the next image
+                    _readyToReceive.Set();
+#if DEBUG
+                    App.Log("Image processed");
+#endif
                 }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                App.Log("[TouchTracker] Cancellation requested.");
+            }
             catch (Exception ex)
             {
-                Debug.WriteLine("Touch processing error: " + ex);
+                Debug.WriteLine("[TouchTracker] Error in processing loop: " + ex);
             }
         }
 
-        private List<Vector3> Extract3DPointsInsideVolume(Capture capture, out long timestamp)
+        private List<Vector3> Extract3DPointsInsideVolume(OBSharp.Sensor.Image depthImage, CalibrationGeometry calibrationGeometry, out long timestamp)
         {
             timestamp = 0;
-            List<Vector3> result = new();
+            var result = new List<Vector3>();
 
-            var depthImage = capture.DepthImage;
             if (depthImage.SizeBytes < sizeof(ushort)) return result;
 
             int width = depthImage.WidthPixels;
@@ -107,8 +171,7 @@ namespace CPRTouchVision.Models
                         if (depth == 0) continue;
 
                         var world = _calibration.Convert2DTo3D(new(x, y), depth,
-                                                              CalibrationGeometry.Depth,
-                                                              CalibrationGeometry.Depth);
+                            calibrationGeometry, CalibrationGeometry.Depth);
 
                         if (world.HasValue)
                         {
@@ -128,8 +191,21 @@ namespace CPRTouchVision.Models
 
         public void Dispose()
         {
+            if (_isDisposed) return;
+            _isDisposed = true;
+
             _cts.Cancel();
-            _processingThread.Join();
+
+            if (_thread.IsAlive)
+                _thread.Join();
+
+            _cts.Dispose();
+            _readyToReceive.Dispose();
+            _imageAvailable.Dispose();
+
+#if DEBUG
+            App.Log("TouchTracker disposed.");
+#endif
         }
     }
 }

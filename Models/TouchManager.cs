@@ -182,7 +182,10 @@ namespace CPRTouchVision.Models
         private CalibrationGeometry _sourceCamera;
         private List<TouchCluster> _clusters = [];
         private CalibrationGeometry _sourseCameraHandleTouch = CalibrationGeometry.Unknown;
-        private bool _isConfigGotten = false; 
+        private bool _isConfigGotten = false;
+#if DEBUG
+        private bool _isSingleOutputDone;
+#endif
         public const int CalibrationPointsCount = 3;
 
         public TouchManager()
@@ -206,12 +209,13 @@ namespace CPRTouchVision.Models
                 Start();
         }
 
+/*
         public SKPoint JointToPoint(Joint joint)
         {
             var result = _calibration.Convert3DTo2D(joint.PositionMm, CalibrationGeometry.Depth, CalibrationGeometry.Color);
             return result != null ? new(result.Value.X, result.Value.Y) : SKPoint.Empty;
         }
-
+*/
         private void Start()
         {
             if (IsRunning || !OBSharp.Sensor.Device.TryOpen(out var device)) return;
@@ -251,24 +255,27 @@ namespace CPRTouchVision.Models
                                                             //_frameWidth, _frameHeight
                                                             );
 
-            //_touchLoop = new(detectableSpace, _calibration);
-            //_touchLoop.TouchFrameReady += OnTouchFrameReady;
-            //_touchLoop.LoopFailed += OnTouchLoopFailed;
-            //_touchLoop.Run();
+            _touchLoop = new(detectableSpace, _calibration);
+            _touchLoop.TouchFrameReady += OnTouchFrameReady;
+            _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
+            _touchLoop.Run();
             IsRunningTrackTouch = true;
 
-            _tracker = new(detectableSpace, _calibration);
+            //_tracker = new(detectableSpace, _calibration);
         }
 
 
         private void OnTouchFrameReady(object? sender, TouchLoopEventArgs e)
         {
+            //Set ready to get new image
+            _isProcessingTouch = false;
             if (e.Clusters == null || e.Clusters.Count == 0) return;
 
             string message = string.Join(";", e.Clusters.Select(c =>
                 $"[{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2} R:{c.Radius:F2} µs:{c.TimestampMicroseconds}]"));
 
             App.Log(message);
+
             // used to be body frame processing logic to display skeletons, joints, jumps, etc.
 
             // TODO: - use OSCClient to send touch events instead of body data.
@@ -282,7 +289,7 @@ namespace CPRTouchVision.Models
             App.Log("Capture loop failed");
         }
 
-        private void OnTouchLoopFailed(object? sender, TouchLoopFailedEventArgs e)
+        private void OnTouchLoopFailed(object? sender, Exception e)
         {
             // TODO: - Display Error
             App.Log("Touch loop failed");
@@ -324,18 +331,18 @@ namespace CPRTouchVision.Models
 
             //_touchLoop?.Enqueue(e.Capture);
 
-            if (!_isProcessingTouch && _tracker != null)
+            if (!_isProcessingTouch)
             {
                 _isProcessingTouch = true;
 
                 //Image clonedImage = CloneImage(clonedCapture.ColorImage);
                 Image clonedImage = CloneImage(clonedCapture.DepthImage);
                 _sourseCameraHandleTouch = CalibrationGeometry.Depth;
-#if DEBUG
-                //DateTime now = DateTime.Now;
-                //var time = now.ToString("HH:mm:ss.fff");
-                //App.Log($"Image size {clonedImage.WidthPixels}x{clonedImage.HeightPixels}");
-#endif
+                //If unsuccessful attempt to send
+                if (!_touchLoop.TrySendImage(clonedImage, _sourseCameraHandleTouch))
+                    _isProcessingTouch = false;
+
+/*
                 Task.Run(() =>
                 {
                     try
@@ -365,6 +372,8 @@ namespace CPRTouchVision.Models
 #endif
                     }
                 });
+*/
+
             }
 
 
@@ -381,6 +390,13 @@ namespace CPRTouchVision.Models
             }
 
             using var depthImage = capture.DepthImage;
+#if DEBUG
+            if (!_isSingleOutputDone)
+            {
+                _isSingleOutputDone = true;
+                App.Log($"Image size of captured DepthImage: {depthImage.WidthPixels}x{depthImage.HeightPixels}");
+            }
+#endif
 
             if (depthImage != null)
             {
@@ -397,7 +413,7 @@ namespace CPRTouchVision.Models
 
         }
 
-        private void OnTouchHappened(object? sender, TouchLoopEventArgs e)
+        private void OnTouchFrameReady(object? sender, TouchFrame e)
         {
             if (e.Clusters == null || e.Clusters.Count == 0) return;
 
@@ -412,7 +428,7 @@ namespace CPRTouchVision.Models
             if (_touchLoop != null)
             {
                 _touchLoop.TouchFrameReady -= OnTouchFrameReady;
-                _touchLoop.LoopFailed -= OnTouchLoopFailed;
+                _touchLoop.TouchLoopFailed -= OnTouchLoopFailed;
                 _touchLoop.Dispose();
                 _touchLoop = null;
             }
