@@ -13,23 +13,24 @@ namespace CPRTouchVision.Models
         private Vector3 _center;
         private float _radius;
         private int _pointsCount;
-        private long _timestampMicroseconds;
+        private DateTime _timestamp;
 
         public Vector3 Center => _center;        // 3D center point of the cluster
         public float Radius => _radius;          // Max radius from center
         public int Count => _pointsCount;
         public List<Vector3> Points => _points;
 
-        public long TimestampMicroseconds         // Time of detection UTC
+        public DateTime Timestamp         // Time of detection UTC
         {
-            get => _timestampMicroseconds;
-            set => _timestampMicroseconds = value;
+            get => _timestamp;
+            set => _timestamp = value;
         }
 
         
 
-        public TouchCluster(List<Vector3> points, long timestamp = 0)
+        public TouchCluster(List<Vector3> points, DateTime? timestamp)
         {
+
             _points = points;
             if (points == null || points.Count == 0)
             {
@@ -43,7 +44,7 @@ namespace CPRTouchVision.Models
                 _pointsCount = points.Count;
             }
 
-            _timestampMicroseconds = timestamp;
+            _timestamp = timestamp ?? DateTime.UtcNow;
         }
 
         private Vector3 CalculateCenter(List<Vector3> points)
@@ -69,9 +70,8 @@ namespace CPRTouchVision.Models
 
         public override string ToString()
         {
-            var milliseconds = _timestampMicroseconds / 1000;
-            var dt = DateTimeOffset.FromUnixTimeMilliseconds(milliseconds).ToLocalTime();
-            return $"TouchCluster(Center: {Center}, Radius: {Radius:F2}, Timestamp: {dt:yyyy-MM-dd HH:mm:ss.fff})";
+
+            return $"TouchCluster(Center: {Center}, Radius: {Radius:F2}, Timestamp: {_timestamp})";
         }
     }
 
@@ -96,7 +96,7 @@ namespace CPRTouchVision.Models
         }
 
 
-        public List<TouchCluster> DetectClusters(List<Vector3> points, long timestamp = 0)
+        public List<TouchCluster> DetectClusters(List<Vector3> points, DateTime timestamp)
         {
             // Step 1: Convert input points to DbscanCustomPoint list
             var dbscanPoints = points.Select(p => new DbscanCustomPoint(p.X, p.Y, p.Z)).ToList();
@@ -116,7 +116,8 @@ namespace CPRTouchVision.Models
                     continue;
 
                 var touchCluster = new TouchCluster(
-                    clusterPoints.Select(p => new Vector3((float)p.Point[0], (float)p.Point[1], (float)p.Point[2])).ToList()
+                    clusterPoints.Select(p => new Vector3((float)p.Point[0], (float)p.Point[1], (float)p.Point[2])).ToList(),
+                    timestamp
                 );
                 initial.Add(touchCluster);
             }
@@ -160,7 +161,7 @@ namespace CPRTouchVision.Models
         private TouchCluster MergeGroup(List<TouchCluster> group)
         {
             var allPoints = group.SelectMany(g => g.Points).ToList();
-            return new TouchCluster(allPoints);
+            return new TouchCluster(allPoints, group.First().Timestamp);
         }
 
     }

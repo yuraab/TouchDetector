@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -30,6 +31,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.AI.MachineLearning;
+using static OpenCvSharp.FileStorage;
 using CV = Emgu.CV;
 using OB = OBSharp.Sensor;
 
@@ -291,27 +293,54 @@ namespace CPRTouchVision.Models
             if (isReady) _isReadyReceiveNewCapture = true;
         }
 
-        private void OnTouchFrameReady(object? sender, TouchLoopEventArgs e)
+        /*
+        private void OnTouchFrameReady(object? sender, TouchFrame e)
         {
-            //Set ready to get new image
-            _isProcessingTouch = false;
             if (e.Clusters == null || e.Clusters.Count == 0) return;
 
             string message = string.Join(";", e.Clusters.Select(c =>
-                $"[Center<{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2}> Radius:{c.Radius:F2} Point Count:{c.Count}  µs:{c.TimestampMicroseconds}]"));
+                $"[Center<{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2}> R:{c.Radius:F2} Point Count:{c.Count} µs:{c.Timestamp}]"));
 
             App.Log(message);
+        }
+        */
+        private void OnTouchFrameReady(object? sender, TouchFrame e)
+        {
+            //Set ready to get new image
 
-            // used to be body frame processing logic to display skeletons, joints, jumps, etc.
+            _isProcessingTouch = false;
 
-            // TODO: - use OSCClient to send touch events instead of body data.
-            // Task.Run(() => _oscClient.Send(bodies));
-            // Changed?.Invoke(this, TouchManagerEventType.NewFrame);
+            List<TouchEvent> touches = new();
+            int idCounter = 0;
+
+            if (e.Clusters == null || e.Clusters.Count == 0) return;
+
+            foreach (var c in e.Clusters) 
+            {
+                var center = _calibration.Convert3DTo2D(new(c.Center.X, c.Center.Y, c.Center.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+                if (center == null) continue;
+                touches.Add(new TouchEvent
+                {
+                    Id = idCounter++,
+                    X = center.Value.X,
+                    Y = center.Value.Y,
+                    Radius = c.Radius,
+                    Timestamp = c.Timestamp
+                });
+            }
+
+            Task.Run(() => _oscClient.Send(touches));
+#if DEBUG
+            string message = $"Total: {touches.Count}; " + string.Join("; ", touches.Select(t =>
+            $"[id:{t.Id} center:({t.X:F2},{t.Y:F2}) r:{t.Radius:F2} ts:{t.Timestamp}]"));
+            App.Log(message);
+#endif
+
+            Changed?.Invoke(this, TouchManagerEventType.NewFrame);
         }
 
         private void OnLoopFailed(object? sender, LoopFailedEventArgs e)
         {
-            // TODO: - Display Error
             App.Log("Capture loop failed");
         }
 
@@ -345,11 +374,7 @@ namespace CPRTouchVision.Models
 
         private void OnCaptureReady(object? sender, CaptureLoopEventArgs e)
         {
-            // TODO: - Handle touch logic here or modify TrackingLoop (preferred) to process touches instead of body frames.
-            // This is the place where we can handle the data captured from the camera.
-            // For body tracker (trampolines, immersive dancing, etc.) we used OBSharp BodyTracking sdk to process 
-            // capture and get body frames in a separate background thread with TrackingLoop.
-            
+            var now = DateTime.UtcNow;
             if (e.Capture == null || e.Capture.IsDisposed)
                 return;
 
@@ -371,7 +396,7 @@ namespace CPRTouchVision.Models
                 GetDepthImageWithoutFilter(depthImage);
                 if (_isReadyReceiveNewCapture && _touchLoop != null)
                 {
-                    _ = _touchLoop.TrySendImage(_depthData, _fw, _fh);
+                    _ = _touchLoop.TrySendImage(_depthData, _fw, _fh, now);
                 }
             }
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
@@ -445,15 +470,6 @@ namespace CPRTouchVision.Models
                 GetDepthImageWithoutFilter(depthImage);
             }
 
-        }
-        private void OnTouchFrameReady(object? sender, TouchFrame e)
-        {
-            if (e.Clusters == null || e.Clusters.Count == 0) return;
-
-            string message = string.Join(";", e.Clusters.Select(c =>
-                $"[Center<{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2}> R:{c.Radius:F2} Point Count:{c.Count} µs:{c.TimestampMicroseconds}]"));
-            
-            App.Log(message);
         }
 
         private void StopTouchLoop()

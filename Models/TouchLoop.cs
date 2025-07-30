@@ -33,7 +33,7 @@ namespace CPRTouchVision.Models
 
         private int _maxQueueSize = 3;
         private readonly object _queueLock = new();
-        private readonly Queue<(ushort[] Image, CalibrationGeometry Geometry)> _imageQueue = new();
+        private readonly Queue<(ushort[] Image, CalibrationGeometry Geometry, DateTime time)> _imageQueue = new();
         
         private TimeSpan _minFrameInterval = TimeSpan.FromMilliseconds(100); // 10 FPS
         private DateTime _lastSentTime = DateTime.MinValue;
@@ -102,7 +102,7 @@ namespace CPRTouchVision.Models
         }
 */
         //public bool TrySendImage(Capture capture)
-        public bool TrySendImage(ushort[] image, int fw, int fh)
+        public bool TrySendImage(ushort[] image, int fw, int fh, DateTime time)
         {
             if (!_isRunning)
                 return false;
@@ -136,7 +136,7 @@ namespace CPRTouchVision.Models
                 */
                 ushort[] depthImage = new ushort[image.Length];
                 image.AsSpan().CopyTo(depthImage);
-                _imageQueue.Enqueue((depthImage, CalibrationGeometry.Color));
+                _imageQueue.Enqueue((depthImage, CalibrationGeometry.Color, time));
 
 #if DEBUG
                 //App.Log("Image cloned and queued");
@@ -164,7 +164,7 @@ namespace CPRTouchVision.Models
             {
                 _imageAvailable.WaitOne();
 
-                (ushort[] image, CalibrationGeometry Geometry)? data = null;
+                (ushort[] image, CalibrationGeometry Geometry, DateTime time)? data = null;
 
                 lock (_queueLock)
                 {
@@ -184,13 +184,11 @@ namespace CPRTouchVision.Models
                     try
                     {
                         
-                        if (!_tracker.EnqueueImage((ushort[])data.Value.image, (CalibrationGeometry)data.Value.Geometry!))
+                        if (!_tracker.EnqueueImage((ushort[])data.Value.image, (CalibrationGeometry)data.Value.Geometry!, data.Value.time))
                         {
                             //data.Value.Image.Dispose(); // if not accepted, we must dispose manually
                         }
-#if DEBUG
-                        //App.Log("Image is sent to tracker");
-#endif
+
                     }
                     catch (Exception ex)
                     {

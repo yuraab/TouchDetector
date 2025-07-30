@@ -1,6 +1,7 @@
-﻿using System;
+﻿using SharpOSC;
+using System;
 using System.Collections.Generic;
-using SharpOSC;
+using System.Linq;
 
 namespace CPRTouchVision.Models
 {
@@ -23,19 +24,19 @@ namespace CPRTouchVision.Models
             _sender.Send(new OscMessage("/cpr/body", bytes));
         }
 
-        public void Send() // List<Body> bodies
+        public void Send(List<TouchEvent> touches) 
         {
-            // TODO: - Replace with new touch event logic here
 
-            //var list = new List<OscMessage>();
+                // Build one string that includes total count and all touch data
+                string payload = $"count:{touches.Count};" + string.Join(";", touches.Select(t =>
+                    $"id:{t.Id},x:{t.X:F2},y:{t.Y:F2},r:{t.Radius:F2},timestamp:{t.Timestamp.Ticks}"));
 
-            //foreach (var body in bodies)
-            //{
-            //    list.Add(new OscMessage("/cpr/body", body.ToBytes()));
-            //}
+                // Convert string to bytes
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(payload);
 
-            //var bundle = new OscBundle((ulong)DateTimeOffset.Now.ToUnixTimeSeconds(), list.ToArray());
-            //_sender.Send(bundle);
+                // Send as individual OSC message per touch
+                _sender.Send(new OscMessage("/cpr/touch", bytes));
+            
         }
     }
 }
