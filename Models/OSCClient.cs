@@ -7,6 +7,7 @@ namespace CPRTouchVision.Models
 {
     internal class OSCClient
     {
+        private int _port = 3333;
         UDPSender[] _senders = new UDPSender[2];
         UDPSender _sender;
 
@@ -16,7 +17,7 @@ namespace CPRTouchVision.Models
             for (int i = 0; i < 2; i++)
                 _senders[i] = new UDPSender("127.0.0.1", 39539 + i);
 
-            _sender = new UDPSender("127.0.0.1", 1488);
+            _sender = new UDPSender("127.0.0.1", _port);
         }
 
         public void Send(byte[] bytes)
