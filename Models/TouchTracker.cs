@@ -171,7 +171,7 @@ namespace CPRTouchVision.Models
         {
             var points = Extract3DPointsInsideVolume(image, _calibrationGeometry);
 #if DEBUG
-            if (!_isCountPointsDisplayed || points.Count > 0)
+            if (!_isCountPointsDisplayed && points.Count > 0)
             {
                 App.Log($"[TouchTracker] Filtered points count: {points.Count}");
                 _isCountPointsDisplayed = false;

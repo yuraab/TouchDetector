@@ -17,12 +17,14 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -191,6 +193,7 @@ namespace CPRTouchVision.Models
         public const int CalibrationPointsCount = 3;
         private bool _isReadyReceiveNewCapture = false;
         private DepthPoint[] _touchZoneCorners;
+        private IntPtr _noiseFilter;
 
         public TouchManager()
         {
@@ -213,13 +216,26 @@ namespace CPRTouchVision.Models
                 Start();
         }
 
-/*
-        public SKPoint JointToPoint(Joint joint)
+        /*
+                public SKPoint JointToPoint(Joint joint)
+                {
+                    var result = _calibration.Convert3DTo2D(joint.PositionMm, CalibrationGeometry.Depth, CalibrationGeometry.Color);
+                    return result != null ? new(result.Value.X, result.Value.Y) : SKPoint.Empty;
+                }
+        */
+
+        private void InitFilters()
         {
-            var result = _calibration.Convert3DTo2D(joint.PositionMm, CalibrationGeometry.Depth, CalibrationGeometry.Color);
-            return result != null ? new(result.Value.X, result.Value.Y) : SKPoint.Empty;
+            IntPtr error;
+            _noiseFilter = OrbbecNative.ob_create_noise_removal_filter(out error);
+
+            var parameters = new OrbbecNative.ob_noise_removal_filter_params
+            {
+                disp_diff = 10,
+                max_size = 80
+            };
+            OrbbecNative.ob_noise_removal_filter_set_filter_params(_noiseFilter, parameters, out error);
         }
-*/
         private void Start()
         {
             if (IsRunning || !OBSharp.Sensor.Device.TryOpen(out var device)) return;
@@ -337,13 +353,6 @@ namespace CPRTouchVision.Models
             if (e.Capture == null || e.Capture.IsDisposed)
                 return;
 
-            //var clonedCapture = e.Capture.DuplicateReference();
-            /*
-            if (_isReadyReceiveNewCapture)
-            {
-                _ = _touchLoop.TrySendImage(clonedCapture);
-            }
-            */
             using var capture = e.Capture;
             using var colorImage = capture.ColorImage;
             _sourceCamera = CalibrationGeometry.Color;
@@ -358,25 +367,85 @@ namespace CPRTouchVision.Models
             using var depthImage = capture.DepthImage;
 
             if (depthImage != null)
-            {
-                using var aligned = new OB.Image(OB.ImageFormat.Depth16, _fw, _fh);
-                _transformation?.DepthImageToColorCamera(depthImage, aligned);
-                _depthData.CopyFrom(aligned);
-                _depthBitmap.Update((bitmap) =>
+            { 
+                GetDepthImageWithoutFilter(depthImage);
+                if (_isReadyReceiveNewCapture && _touchLoop != null)
                 {
-                    bitmap.Pixels = _depthVisualizer.Update(_depthData);
-                });
+                    _ = _touchLoop.TrySendImage(_depthData, _fw, _fh);
+                }
             }
-
-            if (_isReadyReceiveNewCapture && _touchLoop != null)
-            {
-                _ = _touchLoop.TrySendImage(_depthData, _fw, _fh);
-            }
-
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
 
         }
 
+        private void GetDepthImageWithoutFilter(Image depthImage)
+        {
+
+            using var aligned = new OB.Image(OB.ImageFormat.Depth16, _fw, _fh);
+            _transformation?.DepthImageToColorCamera(depthImage, aligned);
+            _depthData.CopyFrom(aligned);
+            _depthBitmap.Update((bitmap) =>
+            {
+                bitmap.Pixels = _depthVisualizer.Update(_depthData);
+            });
+        }
+
+        private void GetDepthImageWithFilter(Image depthImage)
+        {
+            try
+            {
+                // Extract IntPtr from depthImage
+                IntPtr rawHandle = OrbbecHandleHelper.GetNativeHandle(depthImage);
+                if (rawHandle == IntPtr.Zero)
+                    throw new Exception("Cannot extract IntPtr from depthImage");
+
+                //  Apply the native filter
+                rawHandle = OrbbecNative.ob_filter_process(_noiseFilter, rawHandle, out var error);
+                if (rawHandle == IntPtr.Zero)
+                    throw new Exception("Cannot apply the native filter");
+
+                //  Construct NativeHandles.ImageHandle from IntPtr
+                var imageHandle = Activator.CreateInstance(
+                    Type.GetType("OBSharp.NativeHandles+ImageHandle, OBSharp"),
+                    BindingFlags.NonPublic | BindingFlags.Instance,
+                    null,
+                    new object[] { rawHandle },
+                    null
+                );
+                if (imageHandle == null)
+                    throw new Exception("Cannot construct NativeHandles.ImageHandle from IntPtr");
+
+                //  Call Image.Create(handle)
+                var imageType = typeof(OB.Image);
+                var createMethod = imageType.GetMethod("Create", BindingFlags.NonPublic | BindingFlags.Static);
+                var filtered = (OB.Image?)createMethod?.Invoke(null, new[] { imageHandle });
+                if (filtered == null)
+                    throw new Exception("Cannot create an image from IntPtr");
+
+
+                using (filtered)
+                {
+                    // Transform
+                    using var aligned = new OB.Image(OB.ImageFormat.Depth16, _fw, _fh);
+                    _transformation?.DepthImageToColorCamera(filtered, aligned);
+                    _depthData.CopyFrom(aligned);
+
+                    _depthBitmap.Update(bitmap =>
+                    {
+                        bitmap.Pixels = _depthVisualizer.Update(_depthData);
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+#if DEBUG
+                App.Log(ex.Message);
+
+#endif
+                GetDepthImageWithoutFilter(depthImage);
+            }
+
+        }
         private void OnTouchFrameReady(object? sender, TouchFrame e)
         {
             if (e.Clusters == null || e.Clusters.Count == 0) return;
@@ -401,9 +470,20 @@ namespace CPRTouchVision.Models
         IsRunningTrackTouch = false;
         }
 
+        private void RestartTouchLoop()
+        {
+            if (IsRunning)
+            {
+                StopTouchLoop();
+                StartTouchLoop();
+            }
+        }
+
         private void Stop()
         {
             if (!IsRunning) return;
+
+            OrbbecNative.ob_delete_filter(_noiseFilter, out _);
 
             if (_captureLoop != null)
             {
@@ -412,15 +492,7 @@ namespace CPRTouchVision.Models
                 _captureLoop.Dispose();
                 _captureLoop = null;
             }
-            /*
-            if (_trackingLoop != null)
-            {
-                _trackingLoop.BodyFrameReady -= OnBodyFrameReady;
-                _trackingLoop.LoopFailed -= OnLoopFailed;
-                _trackingLoop.Dispose();
-                _trackingLoop = null;
-            }
-            */
+
             StopTouchLoop();
 
             _colorBitmap = new(_colorBitmapInfo);
@@ -529,6 +601,7 @@ namespace CPRTouchVision.Models
 
         public async Task SaveConfig()
         {
+
             if (!_isConfigGotten) return; // To avoid a call SaveConfig before Config was loaded
             var config = new Config(
                 MinOffset,
@@ -1138,6 +1211,7 @@ namespace CPRTouchVision.Models
             {
                 _ = SaveConfig();
                 CheckIsReadyRunTouchLoop();
+                RestartTouchLoop();
             }
             else
             {

@@ -9,7 +9,7 @@ namespace CPRTouchVision.Models
 {
     public class TouchCluster
     {
-
+        private List<Vector3> _points;
         private Vector3 _center;
         private float _radius;
         private int _pointsCount;
@@ -18,6 +18,8 @@ namespace CPRTouchVision.Models
         public Vector3 Center => _center;        // 3D center point of the cluster
         public float Radius => _radius;          // Max radius from center
         public int Count => _pointsCount;
+        public List<Vector3> Points => _points;
+
         public long TimestampMicroseconds         // Time of detection UTC
         {
             get => _timestampMicroseconds;
@@ -28,6 +30,7 @@ namespace CPRTouchVision.Models
 
         public TouchCluster(List<Vector3> points, long timestamp = 0)
         {
+            _points = points;
             if (points == null || points.Count == 0)
             {
                 _center = Vector3.Zero;
@@ -82,7 +85,7 @@ namespace CPRTouchVision.Models
         // Optional: noise suppression (per cluster location)
         private readonly List<Vector3> _recentCenters = new();
         private readonly float _minClusterDistance = 10; // millimeters
-
+        private readonly float _mergeThreshold = 0.9f; // Relative to radius sum
 
 
         public TouchClusterManager(double eps = 40, int minPoints = 10, int rateLimitMs = 100)
@@ -105,7 +108,7 @@ namespace CPRTouchVision.Models
             var clusters = dbscan.Fit(dbscanPoints);
 
             // Step 4: Convert clusters to your custom TouchCluster class
-            var result = new List<TouchCluster>();
+            var initial = new List<TouchCluster>();
 
             foreach (var clusterPoints in clusters)
             { 
@@ -115,79 +118,49 @@ namespace CPRTouchVision.Models
                 var touchCluster = new TouchCluster(
                     clusterPoints.Select(p => new Vector3((float)p.Point[0], (float)p.Point[1], (float)p.Point[2])).ToList()
                 );
-                result.Add(touchCluster);
+                initial.Add(touchCluster);
             }
-            /*
-            foreach (var clusterPoints in clusters)
-            {
-                if (clusterPoints.Count == 0)
-                    continue;
 
-                var touchCluster = new TouchCluster
+            return MergeClusters(initial);
+        }
+
+        private List<TouchCluster> MergeClusters(List<TouchCluster> clusters)
+        {
+            bool[] merged = new bool[clusters.Count];
+            List<TouchCluster> result = new();
+
+            for (int i = 0; i < clusters.Count; i++)
+            {
+                if (merged[i]) continue;
+
+                var baseCluster = clusters[i];
+                List<TouchCluster> toMerge = new() { baseCluster };
+                merged[i] = true;
+
+                for (int j = i + 1; j < clusters.Count; j++)
                 {
-                    Timestamp = timestamp,
-                    Points = clusterPoints.Select(p => new Vector3((float)p.Point[0], (float)p.Point[1], (float)p.Point[2])).ToList()
-                };
+                    if (merged[j]) continue;
 
-                touchCluster.CalculateProperties(); // e.g., Center, Radius, BoundingBox, ConvexHull etc.
-                result.Add(touchCluster);
-            }
-            */
-            return result;
-        }
-        public List<TouchCluster> DetectClustersOld(List<Vector3> points, long timestamp = 0)
-        {
-            
-            var dbscanPoints = points.Select((p, i) => new DbscanCustomPointOld
-            {
-                Id = i,
-                Point = new double[] {p.X, p.Y, p.Z }
-            }).ToList();
-           
-            
-            var dbscan = new DbscanCustomOld(_eps, _minPoints);
-            var clusters = dbscan.Fit(dbscanPoints);
+                    var other = clusters[j];
+                    float dist = (baseCluster.Center - other.Center).Length();
+                    float combinedRadius = baseCluster.Radius + other.Radius;
 
-            var result = new List<TouchCluster>();
+                    if (dist < combinedRadius * _mergeThreshold)
+                    {
+                        toMerge.Add(other);
+                        merged[j] = true;
+                    }
+                }
 
-            foreach (var cluster in clusters)
-            {
-                var clusterPoints = cluster.Select(dp => points[dp.Id]).ToList();
-                if (clusterPoints.Count < _minPoints)
-                    continue;
-
-                result.Add(new TouchCluster(clusterPoints, timestamp));
+                result.Add(MergeGroup(toMerge));
             }
 
             return result;
         }
-
-
-        private bool IsNewCluster(Vector3 center)
+        private TouchCluster MergeGroup(List<TouchCluster> group)
         {
-            foreach (var prev in _recentCenters)
-            {
-                if (Vector3.Distance(prev, center) < _minClusterDistance)
-                    return false; // too close to previous cluster
-            }
-
-            // Keep only last few recent cluster centers
-            if (_recentCenters.Count > 10)
-                _recentCenters.RemoveAt(0);
-
-            return true;
-        }
-        public List<Vector3> FilterTouchPoints(List<Vector3> rawPoints, TouchVolume touchVolume)
-        {
-            var result = new List<Vector3>();
-
-            foreach (var pt in rawPoints)
-            {
-                if (touchVolume.IsPointInVolume(pt))
-                    result.Add(pt);
-            }
-
-            return result;
+            var allPoints = group.SelectMany(g => g.Points).ToList();
+            return new TouchCluster(allPoints);
         }
 
     }

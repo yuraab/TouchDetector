@@ -136,6 +136,8 @@ namespace CPRTouchVision.Models
             _maxSX = 0;
             _minSY = _fh;
             _maxSY = 0;
+            _minD = int.MaxValue;
+            _maxD = 0;
 #if DEBUG
             App.Log($"Min/Max indexes: X => {_minSX}/{_maxSX}   Y => {_minSY}/{_maxSY}");
 #endif
@@ -148,6 +150,7 @@ namespace CPRTouchVision.Models
             App.Log($"Layer1 projection => Corner1: {Layer1[0].SX}:{Layer1[0].SY}  Corner2: {Layer1[2].SX}:{Layer1[2].SY}");
             App.Log($"Layer2 projection => Corner1: {Layer2[0].SX}:{Layer2[0].SY}  Corner2: {Layer2[2].SX}:{Layer2[2].SY}");
             App.Log($"Min/Max indexes: X => {_minSX}/{_maxSX}   Y => {_minSY}/{_maxSY}");
+            App.Log($"Min/Max depth: {_minD}/{_maxD}");
 
             foreach (var point in WallLayer)
             {
