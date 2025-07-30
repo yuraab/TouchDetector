@@ -4,7 +4,7 @@ using SkiaSharp;
 
 namespace CPRTouchVision.Models
 {
-    internal struct DepthPoint
+    public struct DepthPoint
     {
         /* Screen X in pixels. */
         [JsonIgnore]

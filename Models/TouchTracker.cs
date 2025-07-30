@@ -23,6 +23,8 @@ namespace CPRTouchVision.Models
         private readonly TouchVolume _volume;
         private readonly TouchClusterManager _clusterManager;
         private readonly Calibration _calibration;
+        private readonly int _fw;
+        private readonly int _fh;
 
         private Thread _thread;
         private OBSharp.Sensor.Image? _currentImage;
@@ -32,12 +34,13 @@ namespace CPRTouchVision.Models
         private readonly CancellationTokenSource _cts = new();
 
         private readonly object _queueLock = new();
-        private readonly Queue<(OBSharp.Sensor.Image Image, CalibrationGeometry Geometry)> _imageQueue = new();
+        private readonly Queue<(ushort[] Image, CalibrationGeometry Geometry)> _imageQueue = new();
 
         private bool _isRunning;
         private bool _isDisposed;
         private bool _isCountPointsDisplayed = false;
         private int _maxQueueSize;
+        private readonly object _depthLock = new object();
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
@@ -45,6 +48,7 @@ namespace CPRTouchVision.Models
         {
             _volume = volume;
             _calibration = calibration;
+
             _clusterManager = new TouchClusterManager();
 
             _thread = new Thread(ProcessLoop)
@@ -78,7 +82,7 @@ namespace CPRTouchVision.Models
         /// <summary>
         /// Send a new image for processing. Waits until tracker is ready to receive it.
         /// </summary>
-        public bool EnqueueImage(OBSharp.Sensor.Image image, CalibrationGeometry calibrationGeometry)
+        public bool EnqueueImage(ushort[] image, CalibrationGeometry calibrationGeometry)
         {
 
             lock (_queueLock)
@@ -116,7 +120,7 @@ namespace CPRTouchVision.Models
                 while (true)
                 {
 
-                    (OBSharp.Sensor.Image image, CalibrationGeometry geometry)? item = null;
+                    (ushort[] image, CalibrationGeometry geometry)? item = null;
 
                     lock (_queueLock)
                     {
@@ -142,7 +146,7 @@ namespace CPRTouchVision.Models
                                 ProcessImage(image, geometry);
 
                                 // Then dispose
-                                image.Dispose();
+                                //image.Dispose(); //Does not need for ushort[]
 
                                 // This is CRITICAL: allow next image to be enqueued
                                 //_readyToReceive.Set();
@@ -163,64 +167,29 @@ namespace CPRTouchVision.Models
         }
 
 
-        private void ProcessImage(OBSharp.Sensor.Image image, CalibrationGeometry geometry)
+        private void ProcessImage(ushort[] image, CalibrationGeometry geometry)
         {
-            var points = Extract3DPointsInsideVolume(image, _calibrationGeometry, out long timestamp);
+            var points = Extract3DPointsInsideVolume(image, _calibrationGeometry);
 #if DEBUG
-            if (!_isCountPointsDisplayed || points.Count > 100)
+            if (!_isCountPointsDisplayed || points.Count > 0)
             {
                 App.Log($"[TouchTracker] Filtered points count: {points.Count}");
-                _isCountPointsDisplayed = true;
+                _isCountPointsDisplayed = false;
             }
 #endif
-            var clusters = _clusterManager.DetectClusters(points);
+            var sampledPoints = points.Where((_, i) => i % 2 == 0).ToList();
+            var clusters = _clusterManager.DetectClusters(sampledPoints);
 
             if (clusters?.Count > 0)
             {
-                var frame = new TouchFrame(clusters, timestamp);
+                var frame = new TouchFrame(clusters);
                 TouchFrameReady?.Invoke(this, frame);
             }
         }
 
-        private List<Vector3> Extract3DPointsInsideVolume(OBSharp.Sensor.Image depthImage, CalibrationGeometry calibrationGeometry, out long timestamp)
+        private List<Vector3> Extract3DPointsInsideVolume(ushort[] depthImage, CalibrationGeometry calibrationGeometry)
         {
-            timestamp = 0;
-            var result = new List<Vector3>();
-
-            if (depthImage.SizeBytes < sizeof(ushort)) return result;
-
-            int width = depthImage.WidthPixels;
-            int height = depthImage.HeightPixels;
-
-            unsafe
-            {
-                ushort* depthData = (ushort*)depthImage.Buffer;
-
-                for (int y = 0; y < height; y += 2)
-                {
-                    for (int x = 0; x < width; x += 2)
-                    {
-                        int index = y * width + x;
-                        float depth = depthData[index];
-                        if (depth == 0) continue;
-
-                        var world = _calibration.Convert2DTo3D(new(x, y), depth,
-                            calibrationGeometry, CalibrationGeometry.Depth);
-
-                        if (world.HasValue)
-                        {
-                            var vector = new Vector3(world.Value.X, world.Value.Y, world.Value.Z);
-                            if (_volume.IsPointInVolume(vector))
-                                result.Add(vector);
-                        }
-                    }
-                }
-            }
-
-            if (result.Count > 0)
-                timestamp = depthImage.DeviceTimestamp.ValueUsec;
-
-            return result;
+            return _volume.Extract3DPointsInsideVolume(depthImage, calibrationGeometry);
         }
 
         public void Stop()
@@ -239,7 +208,7 @@ namespace CPRTouchVision.Models
                 while (_imageQueue.Count > 0)
                 {
                     var (image, _) = _imageQueue.Dequeue();
-                    image.Dispose();
+                    //image.Dispose(); does not need for ushort[]
                 }
             }
 

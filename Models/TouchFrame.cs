@@ -20,7 +20,7 @@ namespace CPRTouchVision.Models
         /// <summary>
         /// Time when this frame was generated (UTC recommended).
         /// </summary>
-        public long Timestamp { get; }
+        
 
         /// <summary>
         /// Indicates whether any touch clusters were detected.
@@ -32,13 +32,13 @@ namespace CPRTouchVision.Models
         /// </summary>
         /// <param name="clusters">List of detected clusters.</param>
         /// <param name="timestamp">The time of capture in microseconds.</param>
-        public TouchFrame(IEnumerable<TouchCluster> clusters, long timestamp)
+        public TouchFrame(IEnumerable<TouchCluster> clusters)
         {
             if (clusters == null)
                 throw new ArgumentNullException(nameof(clusters));
 
             Clusters = new ReadOnlyCollection<TouchCluster>(new List<TouchCluster>(clusters));
-            Timestamp = timestamp;
+           
         }
 
         /// <summary>
@@ -46,7 +46,7 @@ namespace CPRTouchVision.Models
         /// </summary>
         public override string ToString()
         {
-            return $"TouchFrame(Time={Timestamp:HH:mm:ss.fff}, Clusters={Clusters.Count})";
+            return $"TouchFrame(Clusters={Clusters.Count})";
         }
     }
 }

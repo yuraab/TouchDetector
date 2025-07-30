@@ -1,4 +1,5 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿//using ABI.System.Numerics;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ComputeSharp;
 using Emgu.CV;
 using Emgu.CV.Dai;
@@ -189,6 +190,8 @@ namespace CPRTouchVision.Models
 #endif
         public const int CalibrationPointsCount = 3;
         private bool _isReadyReceiveNewCapture = false;
+        private DepthPoint[] _touchZoneCorners;
+
         public TouchManager()
         {
             _fsize = _fw * _fh;
@@ -251,9 +254,9 @@ namespace CPRTouchVision.Models
                                                             _planeD,
                                                             MinOffset*10,   //convert from centimeters
                                                             MaxOffset*10,   //convert from centimeters
-                                                            TouchZoneCornerWorld1,
-                                                            TouchZoneCornerWorld2
-                                                            //_frameWidth, _frameHeight
+                                                            _touchZoneCorner1,
+                                                            _touchZoneCorner2,
+                                                            _fw, _fh, _calibration
                                                             );
 
             _touchLoop = new(detectableSpace, _calibration);
@@ -334,57 +337,13 @@ namespace CPRTouchVision.Models
             if (e.Capture == null || e.Capture.IsDisposed)
                 return;
 
-            var clonedCapture = e.Capture.DuplicateReference();
-
-            //_touchLoop?.Enqueue(e.Capture);
-
+            //var clonedCapture = e.Capture.DuplicateReference();
+            /*
             if (_isReadyReceiveNewCapture)
             {
                 _ = _touchLoop.TrySendImage(clonedCapture);
             }
-                //Image clonedImage = CloneImage(clonedCapture.ColorImage);
-                /*
-                Image clonedImage = CloneImage(clonedCapture.DepthImage);
-                _sourseCameraHandleTouch = CalibrationGeometry.Depth;
-                //If unsuccessful attempt to send
-                if (!_touchLoop.TrySendImage(clonedImage))
-                    _isProcessingTouch = false;
-                */
-                /*
-                                Task.Run(() =>
-                                {
-                                    try
-                                    {
-                                        if (_tracker.ProcessTouchPresence(clonedImage, _sourseCameraHandleTouch, out _clusters))
-                                        {
-                                            if (_clusters == null || _clusters.Count == 0) return;
-
-                                            string message = string.Join(";", _clusters.Select(c =>
-                                                $"[{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2} R:{c.Radius:F2} Count:{c.Count} µs:{c.TimestampMicroseconds}]"));
-
-                                            App.Log(message);
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        App.Log($"[OnCaptureReady] ERROR during ProcessTouchPresence: {ex.Message}");
-                                    }
-                                    finally
-                                    {
-                                        clonedCapture.Dispose();
-                                        _isProcessingTouch = false;
-                #if DEBUG
-                                        //now = DateTime.Now;
-                                        //time = now.ToString("HH:mm:ss.fff");
-                                        //App.Log($"Stop process image {time}");
-                #endif
-                                    }
-                                });
-                }
-                */
-
-
-            // For now i'll just fire TouchManagerEventType.NewFrame event to display video output in the main window.
+            */
             using var capture = e.Capture;
             using var colorImage = capture.ColorImage;
             _sourceCamera = CalibrationGeometry.Color;
@@ -397,13 +356,6 @@ namespace CPRTouchVision.Models
             }
 
             using var depthImage = capture.DepthImage;
-#if DEBUG
-            if (!_isSingleOutputDone)
-            {
-                _isSingleOutputDone = true;
-                App.Log($"Image size of captured DepthImage: {depthImage.WidthPixels}x{depthImage.HeightPixels}");
-            }
-#endif
 
             if (depthImage != null)
             {
@@ -414,6 +366,11 @@ namespace CPRTouchVision.Models
                 {
                     bitmap.Pixels = _depthVisualizer.Update(_depthData);
                 });
+            }
+
+            if (_isReadyReceiveNewCapture && _touchLoop != null)
+            {
+                _ = _touchLoop.TrySendImage(_depthData, _fw, _fh);
             }
 
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
@@ -439,7 +396,9 @@ namespace CPRTouchVision.Models
                 _touchLoop.Dispose();
                 _touchLoop = null;
             }
-            IsRunningTrackTouch = false;
+        _isReadyReceiveNewCapture = false;
+
+        IsRunningTrackTouch = false;
         }
 
         private void Stop()
@@ -478,7 +437,7 @@ namespace CPRTouchVision.Models
 
             _calibrationPoints.Clear();
             IsFloorLevelSet = false;
-            IsWallPlaneSet = true;
+            IsWallPlaneSet = false;
             IsCalibrating = true;
             ResetTouchZone();
         }
@@ -488,7 +447,8 @@ namespace CPRTouchVision.Models
             _touchZoneCorner1 = DepthPoint.Empty;
             _touchZoneCorner2 = DepthPoint.Empty;
             IsTouchZoneSet = false;
-            CheckIsReadyRunTouchLoop(); 
+            CheckIsReadyRunTouchLoop();
+            StopTouchLoop();
         }
 
         public void StartDefineZone()
@@ -616,14 +576,40 @@ namespace CPRTouchVision.Models
         }
 
 
-        bool IsPointOnPlane(Vector3 point, Vector3 planeNormal, float planeDistance)
+        private bool IsPointOnPlane(System.Numerics.Vector3 point, System.Numerics.Vector3 planeNormal, float planeDistance)
         {
             const float epsilon = 10;
-            float dist = Vector3.Dot(planeNormal, point) + planeDistance;
+            float dist = System.Numerics.Vector3.Dot(planeNormal, point) + planeDistance;
 #if DEBUG
             App.Log($"Is point {point} on plane with planeNormal = {planeNormal} and planeDistance = {planeDistance} => {MathF.Abs(dist) < epsilon}. Distance = {MathF.Abs(dist)}");
 #endif
             return MathF.Abs(dist) < epsilon;
+        }
+
+        DepthPoint ProjectPointOntoPlane(Vector3 point)
+        {
+            float distance = (Vector3.Dot(_planeNormal, point) + _planeD) / _planeNormal.LengthSquared();
+            var point3D = point - _planeNormal * distance;
+            var point2D = _calibration.Convert3DTo2D(new(point3D.X, point3D.Y, point3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+            if (point2D.HasValue)
+            {
+                return DepthPoint.From((int)point2D.Value.X, (int)point2D.Value.Y, point3D.X, point3D.Y, point3D.Z);
+            }
+            return DepthPoint.Empty;
+        }
+
+
+        Vector3 Convert2DTo3DPoint(int pointX, int pointY, ushort d)
+        {
+            var worldPoint1 = _calibration.Convert2DTo3D(new(pointX, pointY), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
+            var x = worldPoint1.Value.X;
+            var y = worldPoint1.Value.Y;
+            var z = worldPoint1.Value.Z;
+            Vector3 pointD = new Vector3(x, y, z);
+#if DEBUG
+            IsPointOnPlane(pointD, _planeNormal, _planeD);
+#endif
+            return pointD;
         }
 
         public async void AddTouchZonePoint(int pointX, int pointY)
@@ -632,7 +618,6 @@ namespace CPRTouchVision.Models
                 return;
 
             var d = GetDepth(new(pointX, pointY));
-            App.Log($"Depth of TouchZone {d}");
 
             if (d <= 0)
             {
@@ -642,30 +627,29 @@ namespace CPRTouchVision.Models
                 return;
             }
 
+            var p3D = Convert2DTo3DPoint(pointX, pointY, d);
+            var projectedPoint= ProjectPointOntoPlane(p3D);
+
+
             if (_touchZoneCorner1.IsEmpty)
             {
-
-                var worldPoint1 = _calibration.Convert2DTo3D(new(pointX,pointY), d, _sourceCamera, CalibrationGeometry.Depth);
-                var x = worldPoint1.Value.X;
-                var y = worldPoint1.Value.Y;
-                var z = worldPoint1.Value.Z;
-                _touchZoneCorner1 = DepthPoint.From(pointX, pointY, x, y, z);
-                IsPointOnPlane(_touchZoneCorner1.World, _planeNormal, _planeD);
+                _touchZoneCorner1 = projectedPoint;
 #if DEBUG
-                App.Log($"Corner point1 added: Screen: v={pointX}, y={pointY}; World: x={x}, y={y}, z={z}");
+                var p = _touchZoneCorner1.World;
+                App.Log($"Corner point1 defined: Screen: v={pointX}, y={pointY}; World: x={p3D.X}, y={p3D.Y}, z={p3D.Z}; Depth={d}");
+                App.Log($"Corner point1 added: Screen: v={pointX}, y={pointY}; World: x={p.X}, y={p.Y}, z={p.Z}; Depth={d}");
 #endif
             }
             else
             {
-                var worldPoint2 = _calibration.Convert2DTo3D(new(pointX, pointY), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
-                var x = worldPoint2.Value.X;
-                var y = worldPoint2.Value.Y;
-                var z = worldPoint2.Value.Z;
-                _touchZoneCorner2 = DepthPoint.From(pointX, pointY, x, y, z);
-                IsPointOnPlane(_touchZoneCorner2.World, _planeNormal, _planeD);
+                _touchZoneCorner2 = projectedPoint;
 #if DEBUG
-                App.Log($"Corner point2 added: Screen: x={pointX}, y={pointY}; World: x={x}, y={y}, z={z}");
+                var p = _touchZoneCorner2.World;
+                App.Log($"Corner point2 defined: Screen: v={pointX}, y={pointY}; World: x={p3D.X}, y={p3D.Y}, z={p3D.Z}; Depth={d}");
+                App.Log($"Corner point2 added: Screen: x={pointX}, y={pointY}; World: x={p.X}, y={p.Y}, z={p.Z}");
 #endif
+
+
                 IsSelectingTouchZone = false;
                 IsTouchZoneSet = true;
                 IsFittingPlane = false;
@@ -918,6 +902,12 @@ namespace CPRTouchVision.Models
             {
                 if (i < _depthData.Length)
                     d = _depthData[i];
+                else
+                {
+#if DEBUG
+                    App.Log($"index out of range {i} where max {_depthData.Length}");
+#endif
+                }
             }
 
             return d;

@@ -33,7 +33,7 @@ namespace CPRTouchVision.Models
 
         private int _maxQueueSize = 3;
         private readonly object _queueLock = new();
-        private readonly Queue<(OBSharp.Sensor.Image Image, CalibrationGeometry Geometry)> _imageQueue = new();
+        private readonly Queue<(ushort[] Image, CalibrationGeometry Geometry)> _imageQueue = new();
         
         private TimeSpan _minFrameInterval = TimeSpan.FromMilliseconds(100); // 10 FPS
         private DateTime _lastSentTime = DateTime.MinValue;
@@ -78,7 +78,7 @@ namespace CPRTouchVision.Models
 #endif
         }
 
-
+/*
         public static Image CloneImage(Image source)
         {
             int width = source.WidthPixels;
@@ -100,8 +100,9 @@ namespace CPRTouchVision.Models
             // Create new image from memory
             return Image.CreateFromMemory(memoryOwner, format, width, height, stride);
         }
-
-        public bool TrySendImage(Capture capture)
+*/
+        //public bool TrySendImage(Capture capture)
+        public bool TrySendImage(ushort[] image, int fw, int fh)
         {
             if (!_isRunning)
                 return false;
@@ -125,14 +126,17 @@ namespace CPRTouchVision.Models
                 }
 
                 _lastSentTime = now;
-
+                /*
+                 * No worrries about managing of Array
                 OBSharp.Sensor.Image image = CloneImage(capture.DepthImage);
                 var calibrationGeometry = CalibrationGeometry.Depth;
 
                 _imageForProcessing = image;
                 _calibrationGeometry = calibrationGeometry;
-
-                _imageQueue.Enqueue((image, calibrationGeometry));
+                */
+                ushort[] depthImage = new ushort[image.Length];
+                image.AsSpan().CopyTo(depthImage);
+                _imageQueue.Enqueue((depthImage, CalibrationGeometry.Color));
 
 #if DEBUG
                 //App.Log("Image cloned and queued");
@@ -160,7 +164,7 @@ namespace CPRTouchVision.Models
             {
                 _imageAvailable.WaitOne();
 
-                (OBSharp.Sensor.Image Image, CalibrationGeometry Geometry)? data = null;
+                (ushort[] image, CalibrationGeometry Geometry)? data = null;
 
                 lock (_queueLock)
                 {
@@ -179,9 +183,10 @@ namespace CPRTouchVision.Models
                 {
                     try
                     {
-                        if (!_tracker.EnqueueImage(data.Value.Image, (CalibrationGeometry)data.Value.Geometry!))
+                        
+                        if (!_tracker.EnqueueImage((ushort[])data.Value.image, (CalibrationGeometry)data.Value.Geometry!))
                         {
-                            data.Value.Image.Dispose(); // if not accepted, we must dispose manually
+                            //data.Value.Image.Dispose(); // if not accepted, we must dispose manually
                         }
 #if DEBUG
                         //App.Log("Image is sent to tracker");
