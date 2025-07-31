@@ -115,23 +115,23 @@ namespace CPRTouchVision.Models
         // Prosessing the data captured
         private TouchLoop? _touchLoop;
 
-        private volatile bool _isProcessingTouch = false;
+        //private volatile bool _isProcessingTouch = false;
 
         private ushort[] _depthData = [];
-        private byte[] _depthPixels = [];
+        //private byte[] _depthPixels = [];
 
         private List<Vector3> _calibrationPoints = new();
         private List<Vector3> _touchZonePoints = new();
 
-        private TouchTracker _tracker;
+        //private TouchTracker _tracker;
 
         private float _planeD = float.MinValue;
         private Vector3 _planeNormal = Vector3.Zero;
         private Vector3 _cameraPosition = Vector3.Zero;
         private DepthPoint _touchZoneCorner1 = DepthPoint.Empty;
-        private Vector3 _touchZoneCornerWorld1 = Vector3.Zero;
+        //private Vector3 _touchZoneCornerWorld1 = Vector3.Zero;
         private DepthPoint _touchZoneCorner2 = DepthPoint.Empty;
-        private Vector3 _touchZoneCornerWorld2 = Vector3.Zero;
+        //private Vector3 _touchZoneCornerWorld2 = Vector3.Zero;
         private System.Numerics.Quaternion _cameraRotation = System.Numerics.Quaternion.Identity;
         private DepthVisualizer _depthVisualizer;
         public readonly object Lock = new object();
@@ -148,11 +148,8 @@ namespace CPRTouchVision.Models
         private SKImageInfo _colorBitmapInfo;
         private DoubleBufferedBitmap _colorBitmap;
         private DoubleBufferedBitmap _depthBitmap;
-        private Dictionary<int, float> _elevationOffsets = new();
-
 
         private readonly object _depthLock = new object();
-        private readonly object _bodiesLock = new object();
         private readonly int _defaltMaxOffset = 15;
         private readonly int _defaltMinOffset = 1;
         private OSCClient _oscClient = new();
@@ -165,7 +162,7 @@ namespace CPRTouchVision.Models
         public int FrameWidth { get => _frameWidth; set => _frameWidth = value; }
         public int FrameHeight { get => _frameHeight; set => _frameHeight = value; }
 
-        private bool _notSetTouchConfig = false;     
+        //private bool _notSetTouchConfig = false;     
 
         public float PlaneD => _planeD;
         public Vector3 PlaneNormal => _planeNormal;
@@ -183,8 +180,8 @@ namespace CPRTouchVision.Models
         public EventHandler<TouchManagerEventType>? Changed;
 
         private UdpClient _client = new();
-        private IPEndPoint _endpoint = new IPEndPoint(IPAddress.Loopback, 12345);
-        private CalibrationGeometry _sourceCamera;
+        //private IPEndPoint _endpoint = new IPEndPoint(IPAddress.Loopback, 12345);
+        //private CalibrationGeometry _sourceCamera;
         private List<TouchCluster> _clusters = [];
         private CalibrationGeometry _sourseCameraHandleTouch = CalibrationGeometry.Unknown;
         private bool _isConfigGotten = false;
@@ -201,7 +198,7 @@ namespace CPRTouchVision.Models
         {
             _fsize = _fw * _fh;
             _depthData = new ushort[_fsize];
-            _depthPixels = new byte[_fsize * 4];
+            //_depthPixels = new byte[_fsize * 4];
             _depthVisualizer = new(_fw, _fh);
             _colorBitmapInfo = new(_fw, _fh, SKColorType.Bgra8888, SKAlphaType.Premul);
             _colorBitmap = new DoubleBufferedBitmap(_colorBitmapInfo);
@@ -217,14 +214,6 @@ namespace CPRTouchVision.Models
             else
                 Start();
         }
-
-        /*
-                public SKPoint JointToPoint(Joint joint)
-                {
-                    var result = _calibration.Convert3DTo2D(joint.PositionMm, CalibrationGeometry.Depth, CalibrationGeometry.Color);
-                    return result != null ? new(result.Value.X, result.Value.Y) : SKPoint.Empty;
-                }
-        */
 
         private void InitFilters()
         {
@@ -246,10 +235,6 @@ namespace CPRTouchVision.Models
             _captureLoop.CaptureReady += OnCaptureReady;
             _captureLoop.LoopFailed += OnLoopFailed;
             _captureLoop.GetCalibration(out _calibration);
-       
-#if DEBUG
-            App.Log($"Calibration gotten with Depth Mode: {_calibration.DepthMode} :{_calibration.DepthCameraCalibration}");
-#endif
 
             _transformation = new Transformation(_calibration);
 
@@ -293,22 +278,11 @@ namespace CPRTouchVision.Models
             if (isReady) _isReadyReceiveNewCapture = true;
         }
 
-        /*
-        private void OnTouchFrameReady(object? sender, TouchFrame e)
-        {
-            if (e.Clusters == null || e.Clusters.Count == 0) return;
-
-            string message = string.Join(";", e.Clusters.Select(c =>
-                $"[Center<{c.Center.X:F2},{c.Center.Y:F2},{c.Center.Z:F2}> R:{c.Radius:F2} Point Count:{c.Count} µs:{c.Timestamp}]"));
-
-            App.Log(message);
-        }
-        */
         private void OnTouchFrameReady(object? sender, TouchFrame e)
         {
             //Set ready to get new image
 
-            _isProcessingTouch = false;
+            //_isProcessingTouch = false;
 
             List<TouchEvent> touches = new();
             int idCounter = 0;
@@ -380,7 +354,7 @@ namespace CPRTouchVision.Models
 
             using var capture = e.Capture;
             using var colorImage = capture.ColorImage;
-            _sourceCamera = CalibrationGeometry.Color;
+            //_sourceCamera = CalibrationGeometry.Color;
             if (colorImage != null)
             {
                 _colorBitmap.Update((bitmap) =>

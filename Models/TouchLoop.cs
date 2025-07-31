@@ -20,12 +20,12 @@ namespace CPRTouchVision.Models
     {
         private readonly AutoResetEvent _readyToReceive = new(true);  // Initially ready
         private readonly AutoResetEvent _imageAvailable = new(false); // No image yet
-        private OBSharp.Sensor.Image? _imageForProcessing;
-        private CalibrationGeometry? _calibrationGeometry;
+        //private OBSharp.Sensor.Image? _imageForProcessing;
+        //private CalibrationGeometry? _calibrationGeometry;
         private readonly Thread _thread;
         private bool _isRunning;
         private bool _isDisposed;
-        private readonly object _lock = new();
+        //private readonly object _lock = new();
         private readonly TouchTracker_ _tracker;
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
@@ -37,9 +37,9 @@ namespace CPRTouchVision.Models
         
         private TimeSpan _minFrameInterval = TimeSpan.FromMilliseconds(100); // 10 FPS
         private DateTime _lastSentTime = DateTime.MinValue;
-        private readonly object _rateLock = new();
+        //private readonly object _rateLock = new();
 
-        private Thread? _processingThread;
+        //private Thread? _processingThread;
 
         private readonly int _maxRatePerSecond;
         private DateTime _lastProcessedTime = DateTime.MinValue;
@@ -78,29 +78,6 @@ namespace CPRTouchVision.Models
 #endif
         }
 
-/*
-        public static Image CloneImage(Image source)
-        {
-            int width = source.WidthPixels;
-            int height = source.HeightPixels;
-            var format = source.Format;
-
-            int stride = format.StrideBytes(width);
-            int totalBytes = height * stride;
-
-            // Rent buffer and copy data
-            var memoryOwner = MemoryPool<byte>.Shared.Rent(totalBytes);
-            var destinationSpan = memoryOwner.Memory.Span.Slice(0, totalBytes);
-            // Convert raw pointer to Span
-            unsafe
-            {
-                var sourceSpan = new Span<byte>((void*)source.Buffer, totalBytes);
-                sourceSpan.CopyTo(destinationSpan);
-            }
-            // Create new image from memory
-            return Image.CreateFromMemory(memoryOwner, format, width, height, stride);
-        }
-*/
         //public bool TrySendImage(Capture capture)
         public bool TrySendImage(ushort[] image, int fw, int fh, DateTime time)
         {
@@ -126,21 +103,10 @@ namespace CPRTouchVision.Models
                 }
 
                 _lastSentTime = now;
-                /*
-                 * No worrries about managing of Array
-                OBSharp.Sensor.Image image = CloneImage(capture.DepthImage);
-                var calibrationGeometry = CalibrationGeometry.Depth;
 
-                _imageForProcessing = image;
-                _calibrationGeometry = calibrationGeometry;
-                */
                 ushort[] depthImage = new ushort[image.Length];
                 image.AsSpan().CopyTo(depthImage);
                 _imageQueue.Enqueue((depthImage, CalibrationGeometry.Color, time));
-
-#if DEBUG
-                //App.Log("Image cloned and queued");
-#endif
 
                 ReadyForNewImage?.Invoke(this, true); // Notify main process that it can send new image
                 _imageAvailable.Set(); // Wake processing thread
@@ -168,26 +134,21 @@ namespace CPRTouchVision.Models
 
                 lock (_queueLock)
                 {
-
                     if (_imageQueue.Count > 0)
                     {
                         data = _imageQueue.Dequeue();
                         _lastProcessedTime = DateTime.UtcNow;
                         _imageAvailable.Set();
                     }
-
-
                 }
 
                 if (data.HasValue)
                 {
                     try
                     {
-                        
-                        if (!_tracker.EnqueueImage((ushort[])data.Value.image, (CalibrationGeometry)data.Value.Geometry!, data.Value.time))
-                        {
-                            //data.Value.Image.Dispose(); // if not accepted, we must dispose manually
-                        }
+
+                        _ = _tracker.EnqueueImage((ushort[])data.Value.image, (CalibrationGeometry)data.Value.Geometry!, data.Value.time);
+
 
                     }
                     catch (Exception ex)
@@ -217,8 +178,8 @@ namespace CPRTouchVision.Models
             _tracker.Dispose();
 
             // 3. Dispose last pending image (if any)
-            _imageForProcessing?.Dispose();
-            _imageForProcessing = null;
+            //_imageForProcessing?.Dispose();
+            //_imageForProcessing = null;
 
             // 4. Dispose signaling resources (AutoResetEvents)
             _readyToReceive.Dispose();

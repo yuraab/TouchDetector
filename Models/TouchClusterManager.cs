@@ -87,6 +87,7 @@ namespace CPRTouchVision.Models
         private readonly float _minClusterDistance = 10; // millimeters
         private readonly float _mergeThreshold = 0.9f; // Relative to radius sum
 
+        public int MinPoints => _minPoints;
 
         public TouchClusterManager(double eps = 40, int minPoints = 10, int rateLimitMs = 100)
         {

@@ -169,16 +169,35 @@ namespace CPRTouchVision.Models
 
         private void ProcessImage(ushort[] image, CalibrationGeometry geometry, DateTime time)
         {
-            var points = Extract3DPointsInsideVolume(image, _calibrationGeometry);
+            List<TouchCluster> clusters = new List<TouchCluster>();
+
 #if DEBUG
+            var stopwatch = Stopwatch.StartNew();
+#endif
+
+            var points = Extract3DPointsInsideVolume(image, _calibrationGeometry);
+
+#if DEBUG
+            stopwatch.Stop();
+            App.Log($"Filter points time: {stopwatch.ElapsedMilliseconds} ms");
+
             if (!_isCountPointsDisplayed && points.Count > 0)
             {
                 App.Log($"[TouchTracker] Filtered points count: {points.Count}");
                 _isCountPointsDisplayed = false;
             }
+
+            stopwatch = Stopwatch.StartNew();
 #endif
-            var sampledPoints = points.Where((_, i) => i % 2 == 0).ToList();
-            var clusters = _clusterManager.DetectClusters(sampledPoints, time);
+            if (points.Count >= _clusterManager.MinPoints)
+            {
+                clusters = _clusterManager.DetectClusters(points, time);
+            }
+#if DEBUG
+            stopwatch.Stop();
+            if (points.Count >= _clusterManager.MinPoints)
+                App.Log($"Define clusters time: {stopwatch.ElapsedMilliseconds} ms");
+#endif
 
             if (clusters?.Count > 0)
             {
@@ -225,16 +244,6 @@ namespace CPRTouchVision.Models
 
             Stop();
 
-            /*
-            _cts.Cancel();
-
-            if (_thread.IsAlive)
-                _thread.Join();
-
-            _cts.Dispose();
-            _readyToReceive.Dispose();
-            _imageAvailable.Dispose();
-            */
 
 #if DEBUG
             App.Log("TouchTracker disposed.");
@@ -243,117 +252,3 @@ namespace CPRTouchVision.Models
     }
 }
 
-
-public sealed class TouchTracker
-{
-    private readonly TouchVolume _volume;
-    private readonly TouchClusterManager _clusterManager;
-    private readonly Calibration _calibration;
-
-    public TouchTracker(TouchVolume volume, Calibration calibration)
-    {
-        _volume = volume;
-        _clusterManager = new TouchClusterManager();
-        _calibration = calibration;
-    }
-/*
-    public bool ProcessTouchPresence(OBSharp.Sensor.Image capture, CalibrationGeometry sourceCamera, out List<TouchCluster> clusters)
-    {
-        clusters = [];
-
-        try
-        {
-            long timestamp;
-            List<Vector3> points = Extract3DPointsInsideVolume(capture, sourceCamera, out timestamp);
-#if DEBUG
-            if (points.Count > 0) App.Log($"Count extracted points {points.Count}");
-#endif
-
-            clusters = _clusterManager.DetectClusters(points);
-#if DEBUG
-            if (points.Count > 0)  App.Log($"Count clusters {clusters.Count}");
-#endif
-
-            return clusters.Count > 0; // Touch presence
-        }
-        catch (Exception ex)
-        {
-            App.Log($"[TouchTracker] ERROR in ProcessTouchPresence: {ex.Message}");
-            App.Log($"Calibration => {_calibration}");
-            return false;
-        }
-    }
-*/
-    private List<Vector3> Extract3DPointsInsideVolume(OBSharp.Sensor.Image depthImage, CalibrationGeometry sourceCamera, out long timestamp)
-    {
-        timestamp = 0;
-        List<Vector3> result = new();
-        /*
-        float maxTD = _volume.WallDistance - _volume.MinOffset;
-        float minTD = _volume.WallDistance - _volume.MaxOffset;
-        int counter = 0;
-        float minD = 100000;
-        float maxD = 0;
-        float minX = float.MaxValue, minY = float.MaxValue;
-        float maxX = float.MinValue, maxY = float.MinValue;
-        float minIX = float.MaxValue, minIY = float.MaxValue;
-        float maxIX = float.MinValue, maxIY = float.MinValue;
-        */
-        if (depthImage.SizeBytes < sizeof(ushort)) return result;
-
-        int width = depthImage.WidthPixels;
-        int height = depthImage.HeightPixels;
-
-        unsafe
-        {
-            ushort* depthData = (ushort*)depthImage.Buffer;
-
-            for (int y = 0; y < height; y += 2)
-            {
-                for (int x = 0; x < width; x += 2)
-                {
-                    int index = y * width + x;
-                    float depth = depthData[index];
-#if DEBUG
-                    
-#endif
-                    if (depth == 0) continue;
-
-                    var world = _calibration.Convert2DTo3D(new(x, y), depth,
-                                                          sourceCamera,
-                                                          CalibrationGeometry.Depth);
-
-                    if (world.HasValue)
-                    {
-                        var vector = new Vector3(world.Value.X, world.Value.Y, world.Value.Z);
-                        if (_volume.IsPointInVolume(vector))
-                            result.Add(vector);
-                        //if (vector.X > maxX) maxX = vector.X;
-                        //if (vector.X < minX) minX = vector.X;
-                        //if (vector.Y > maxY) maxY = vector.Y;
-                        //if (vector.Y < minY) minY = vector.Y;
-                        ///var validD = depth <= maxTD && depth >= minTD;
-                        //var validX = vector.X <= _volume.Corner4.X && vector.X >= _volume.Corner1.X;
-                        //var validY = vector.Y <= _volume.Corner4.Y && vector.Y >= _volume.Corner1.Y;
-                        //if (validD && validX && validY) counter++;
-                    }
-                    else
-                    {
-#if DEBUG
-                        App.Log($"No value for point with x={x}, y={y}, depth={depth}");
-#endif
-                    }
-                }
-            }
-        }
-
-        if (result.Count > 0)
-            timestamp = depthImage.DeviceTimestamp.ValueUsec;
-#if DEBUG
-        //App.Log($"Points in volume slice = {counter}");
-        //App.Log($"minX = {minX}; maxX = {maxX}");
-        //App.Log($"minY = {minY}; maxY = {maxY}");
-#endif
-        return result;
-    }
-}
