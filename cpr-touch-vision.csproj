@@ -58,10 +58,6 @@
     </ProjectReference>
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\HardwareDetection\HardwareDetection.csproj" />
-  </ItemGroup>
-
   <Target Name="CopyNativeDependencies" AfterTargets="Build">
 	<ItemGroup>
 	  <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.dll" />
