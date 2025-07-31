@@ -1,4 +1,4 @@
-﻿using HardwareDetection;
+﻿//using HardwareDetection;
 using Microsoft.UI.Xaml;
 using OBSharp;
 using System;
