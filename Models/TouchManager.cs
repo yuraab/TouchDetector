@@ -1188,6 +1188,7 @@ namespace CPRTouchVision.Models
             {
                 _ = SaveConfig();
                 CheckIsReadyRunTouchLoop();
+                RestartTouchLoop();
             }
             else
             {

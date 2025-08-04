@@ -48,9 +48,10 @@
     <PackageReference Include="OpenCvSharp4" Version="4.11.0.20250507" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
     <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.0" />
+    <PackageReference Include="System.Management" Version="9.0.7" />
     <PackageReference Include="System.Private.Uri" Version="4.3.2" />
     <PackageReference Include="WinUIEx" Version="2.6.0" />
-	<PackageReference Include="DBSCAN" Version="3.0.0" />  
+	  <PackageReference Include="DBSCAN" Version="3.0.0" />  
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ob-sharp\ob-sharp.csproj">
