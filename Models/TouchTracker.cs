@@ -179,9 +179,9 @@ namespace CPRTouchVision.Models
 
 #if DEBUG
             stopwatch.Stop();
-            App.Log($"Filter points time: {stopwatch.ElapsedMilliseconds} ms");
+            //App.Log($"Filter points time: {stopwatch.ElapsedMilliseconds} ms");
 
-            if (!_isCountPointsDisplayed && points.Count > 0)
+            if (!_isCountPointsDisplayed && points.Count >= _clusterManager.MinPoints)
             {
                 App.Log($"[TouchTracker] Filtered points count: {points.Count}");
                 _isCountPointsDisplayed = false;

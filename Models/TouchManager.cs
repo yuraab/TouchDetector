@@ -798,7 +798,7 @@ namespace CPRTouchVision.Models
             }
 
             var points = result.Where(p => !p.IsEmpty).ToArray();
-            App.Log($"Point amaount {points.Length}");
+            App.Log($"Point amount {points.Length}");
             (_planeD, _planeNormal) = await Task.Run(() => FitPlaneSVD2(points));
 
             //Debug.WriteLine($"Wall normal: {_planeNormal}");
@@ -841,47 +841,6 @@ namespace CPRTouchVision.Models
 #endif
         }
 
-/*
-        private (float, Vector3) FitPlaneSVD(DepthPoint[] points)
-        {
-            int count = points.Length;
-
-            // Step 1: Compute centroid
-            Vector3 centroid = Vector3.Zero;
-            foreach (var p in points)
-                centroid += p.World;
-            centroid /= count;
-
-            // Step 2: Center the points
-            CV.Matrix<float> mat = new CV.Matrix<float>(count, 3);
-            for (int i = 0; i < count; i++)
-            {
-                var p = points[i].World - centroid;
-                mat[i, 0] = p.X;
-                mat[i, 1] = p.Y;
-                mat[i, 2] = p.Z;
-            }
-
-            // Step 3: SVD
-            CV.Matrix<float> w = new CV.Matrix<float>(3, 1);     // Singular values
-            CV.Matrix<float> u = new CV.Matrix<float>(count, 3); // Left singular vectors
-            CV.Matrix<float> vt = new CV.Matrix<float>(3, 3);    // Right singular vectors (transpose of V)
-
-            CV.CvInvoke.SVDecomp(mat, w, u, vt, CV.CvEnum.SvdFlag.Default);
-
-            // Plane normal = last row of V^T = last column of V
-            Vector3 normal = new Vector3(vt[2, 0], vt[2, 1], vt[2, 2]);
-            normal = Vector3.Normalize(normal);
-
-            if (normal.Z > 0)
-                normal = -normal;
-
-            // Plane equation: n.X * x + n.Y * y + n.Z * z + d = 0
-            float d = -Vector3.Dot(normal, centroid);
-
-            return (d, normal);
-        }
-*/
         private (float, Vector3) FitPlaneSVD2(DepthPoint[] points)
         {
             int count = points.Length;
@@ -976,115 +935,6 @@ namespace CPRTouchVision.Models
             return d;
         }
 
-
-        // 3D Helpers
-
-        private Projection ProjectToFloor(Vector3 point)
-        {
-            if (!IsFloorLevelSet)
-                throw new InvalidOperationException("Cannot project to floor if the floor plane is not set yet.");
-
-            // 1. Define an origin on the plane.
-            // For a normalized normal, origin = normal * d is on the plane.
-            Vector3 origin = _planeNormal * _planeD;
-
-            // 2. Project the point onto the plane.
-            // Compute the signed distance from the point to the plane:
-            float distance = Vector3.Dot(point, _planeNormal) + _planeD;
-            // Remove the component along the normal:
-            Vector3 projectedPoint = point - distance * _planeNormal;
-
-            return new Projection()
-            {
-                Distance = distance,
-                Point = projectedPoint
-            };
-            /*
-
-            // 3. Define a local coordinate system on the plane.
-            // Choose an arbitrary vector that is not parallel to the plane normal.
-            Vector3 arbitrary = Math.Abs(Vector3.Dot(_planeNormal, Vector3.UnitY)) < 0.999f
-                                ? Vector3.UnitY
-                                : Vector3.UnitX;
-            //// The first basis vector in the plane:
-            Vector3 u = Vector3.Normalize(Vector3.Cross(_planeNormal, arbitrary));
-            //// The second basis vector, orthogonal to both:
-            Vector3 v = Vector3.Cross(_planeNormal, u);
-
-            // 4. Express the projected point in the plane's local 2D coordinates.
-            Vector3 relative = projectedPoint - origin;
-            float uCoord = Vector3.Dot(relative, u);
-            float vCoord = Vector3.Dot(relative, v);
-
-            return (distance, new Vector3(uCoord, vCoord, 0));
-            //return new Projection() 
-            //{
-            //    Point = new Coordinate(uCoord, vCoord),
-            //    Distance = distance
-            //};
-            */
-        }
-
-        private Projection ProjectToFloor(DepthPoint point)
-        {
-            return ProjectToFloor(point.World);
-        }
-/*
-        private IList<Vector3> ProjectTrampolineToFloor(Trampoline trampoline)
-        {
-            var result = new List<Vector3>();
-
-            foreach (var v in trampoline.Vertices)
-            {
-                var p = ProjectToFloor(v);
-                result.Add(p.Point);
-            }
-
-            return result;
-        }
-
-        private (Projection left, Projection right) ProjectSkeletonToFloor(Skeleton skeleton)
-        {
-            var left = ProjectToFloor(skeleton.FootLeft.PositionMm.ToVector3());
-            var right = ProjectToFloor(skeleton.FootRight.PositionMm.ToVector3());
-            return (left, right);
-        }
-
-
-        private bool IsSkeletonInsideTrampoline(Trampoline trampoline, Skeleton skeleton)
-        {
-            try
-            {
-                var (left, right) = ProjectSkeletonToFloor(skeleton);
-                return IsSkeletonInsideTrampoline(trampoline, left, right);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(ex.Message);
-            }
-
-            return false;
-        }
-
-        private bool IsSkeletonInsideTrampoline(Trampoline trampoline, Projection leftFoot, Projection rightFoot)
-        {
-            try
-            {
-                var polygon = ProjectTrampolineToFloor(trampoline);
-
-                var isInside = GeometryHelper.IsPointInPolygon(polygon, leftFoot.Point);
-                isInside = isInside || GeometryHelper.IsPointInPolygon(polygon, rightFoot.Point);
-
-                return isInside;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(ex.Message);
-            }
-
-            return false;
-        }
-*/
         private void CheckIsReadyRunTouchLoop()
         {
             IsReadyTrackTouch = IsWallPlaneSet && IsTouchZoneSet && (MaxOffset > MinOffset);

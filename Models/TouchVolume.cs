@@ -1,6 +1,7 @@
 ﻿using OBSharp.Sensor;
 using OpenCvSharp;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -274,29 +275,43 @@ namespace CPRTouchVision.Models
             var size = w * h;
             lock (_depthLock)
             {
+                var localLists = new List<Vector3>[Environment.ProcessorCount];
 
-                Parallel.For(minSY, maxSY, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, y =>
-                {
-                    if ((y - minSY) % step != 0)
-                        return;
-                    for (int x = minSX; x < maxSX; x += step)
+                Parallel.For(0, localLists.Length, i => localLists[i] = new List<Vector3>());
+
+                Parallel.ForEach(
+                    Partitioner.Create(minSY, maxSY),
+                    new ParallelOptions { MaxDegreeOfParallelism = localLists.Length },
+                    () => new List<Vector3>(),
+                    (range, _, localList) =>
                     {
-                        int index = y * _fw + x;
-                        float d = (float)depthImage[index];
-                        if (d <= 0 || d < _minD || d > _maxD) continue;
+                        for (int y = range.Item1; y < range.Item2; y++)
+                        {
+                            if ((y - minSY) % step != 0)
+                                continue;
 
-                        var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
-                        if (world == null) continue;
+                            for (int x = minSX; x < maxSX; x += step)
+                            {
+                                int index = y * _fw + x;
+                                float d = (float)depthImage[index];
+                                if (d <= 0 || d < _minD || d > _maxD) continue;
 
-                        var vector = new Vector3(
-                            world.Value.X,
-                            world.Value.Y,
-                            world.Value.Z
-                        );
-                        if (IsPointInVolume(vector)) result.Add(vector);
-                    }
-                });
-                
+                                var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
+                                if (world == null) continue;
+
+                                var vector = new Vector3(world.Value.X, world.Value.Y, world.Value.Z);
+                                if (IsPointInVolume(vector)) localList.Add(vector);
+                            }
+                        }
+                        return localList;
+                    },
+                    localList => {
+                        lock (result)
+                        {
+                            result.AddRange(localList);
+                        }
+                    });
+
             }
             return result;
         }

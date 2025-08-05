@@ -79,6 +79,7 @@ namespace CPRTouchVision.Models
     {
         private readonly double _eps;
         private readonly int _minPoints;
+        private readonly int _minRadius;
         private readonly int _rateLimitMs;
         private DateTime _lastSentTime = DateTime.MinValue;
 
@@ -89,10 +90,11 @@ namespace CPRTouchVision.Models
 
         public int MinPoints => _minPoints;
 
-        public TouchClusterManager(double eps = 40, int minPoints = 10, int rateLimitMs = 100)
+        public TouchClusterManager(double eps = 40, int minPoints = 10, int minRadius = 25, int rateLimitMs = 100)
         {
             _eps = eps;
             _minPoints = minPoints;
+            _minRadius = minRadius;
             _rateLimitMs = rateLimitMs;
         }
 
@@ -111,16 +113,18 @@ namespace CPRTouchVision.Models
             // Step 4: Convert clusters to your custom TouchCluster class
             var initial = new List<TouchCluster>();
 
-            foreach (var clusterPoints in clusters)
+            foreach (var cluster in clusters)
             { 
-                if (clusterPoints.Count < _minPoints)
+                if (cluster.Count < _minPoints)
                     continue;
 
                 var touchCluster = new TouchCluster(
-                    clusterPoints.Select(p => new Vector3((float)p.Point[0], (float)p.Point[1], (float)p.Point[2])).ToList(),
+                    cluster.Select(p => new Vector3((float)p.Point[0], (float)p.Point[1], (float)p.Point[2])).ToList(),
                     timestamp
                 );
+
                 initial.Add(touchCluster);
+
             }
 
             return MergeClusters(initial);
