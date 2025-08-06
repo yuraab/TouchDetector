@@ -100,10 +100,10 @@ namespace CPRTouchVision.Models
         int _offset = 15;
 
         [ObservableProperty]
-        int _minOffset;
+        int _minOffset = 5;
 
         [ObservableProperty]
-        int _maxOffset;
+        int _maxOffset = 15;
 
         private bool _disposed = false;
         private Calibration _calibration = new();
@@ -129,9 +129,11 @@ namespace CPRTouchVision.Models
         private Vector3 _planeNormal = Vector3.Zero;
         private Vector3 _cameraPosition = Vector3.Zero;
         private DepthPoint _touchZoneCorner1 = DepthPoint.Empty;
-        //private Vector3 _touchZoneCornerWorld1 = Vector3.Zero;
         private DepthPoint _touchZoneCorner2 = DepthPoint.Empty;
-        //private Vector3 _touchZoneCornerWorld2 = Vector3.Zero;
+
+        private TouchVolume _detectableSpace;
+        public TouchVolume DetectableSpace => _detectableSpace;
+
         private System.Numerics.Quaternion _cameraRotation = System.Numerics.Quaternion.Identity;
         private DepthVisualizer _depthVisualizer;
         public readonly object Lock = new object();
@@ -253,16 +255,22 @@ namespace CPRTouchVision.Models
 #endif
             if (IsRunningTrackTouch || !IsReadyTrackTouch) return;
 
-            TouchVolume detectableSpace = new TouchVolume(  _planeNormal, 
-                                                            _planeD,
-                                                            MinOffset*10,   //convert from centimeters
-                                                            MaxOffset*10,   //convert from centimeters
-                                                            _touchZoneCorner1,
-                                                            _touchZoneCorner2,
-                                                            _fw, _fh, _calibration
-                                                            );
-
-            _touchLoop = new(detectableSpace, _calibration);
+            _detectableSpace = new TouchVolume( _planeNormal, 
+                                                _planeD,
+                                                MinOffset*10,   //convert from centimeters
+                                                MaxOffset*10,   //convert from centimeters
+                                                _touchZoneCorner1,
+                                                _touchZoneCorner2,
+                                                _fw, _fh, _calibration
+                                               );
+#if DEBUG
+            App.Log("Touch Zone Corners:");
+            App.Log($"{_detectableSpace.Corner1.Screen}");
+            App.Log($"{_detectableSpace.Corner2.Screen}");
+            App.Log($"{_detectableSpace.Corner3.Screen}");
+            App.Log($"{_detectableSpace.Corner4.Screen}");
+#endif
+            _touchLoop = new(_detectableSpace, _calibration);
             _touchLoop.TouchFrameReady += OnTouchFrameReady;
             _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
             _touchLoop.ReadyForNewImage += OnReadyForNewImage;

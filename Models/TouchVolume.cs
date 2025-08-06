@@ -204,7 +204,7 @@ namespace CPRTouchVision.Models
             {
                 var p = layer[i];
 #if DEBUG
-                App.Log($"Layer indexe: X => {p.SX}   Y => {p.SY}");
+                App.Log($"Layer index: X => {p.SX}   Y => {p.SY}");
 #endif
                 if (p.SX < _minSX) _minSX = p.SX;
                 if (p.SX > _maxSX) _maxSX = p.SX;

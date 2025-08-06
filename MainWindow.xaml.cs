@@ -53,7 +53,7 @@ namespace CPRTouchVision
 
         private void OnDefineTouchZoneClicked(object? sender, RoutedEventArgs e)
         {
-            _manager.StartCalibration();
+            _manager.StartDefineZone();
         }
 
         private void OnManagerChanged(object? sender, TouchManagerEventType e)
@@ -153,6 +153,11 @@ namespace CPRTouchVision
 
         private void DrawTouchZone(SKCanvas canvas)
         {
+            DrawTouchZonePolygon(canvas);
+        }
+
+        private void DrawTouchZoneRect(SKCanvas canvas)
+        {
             if (!_manager.IsTouchZoneSet)
                 return;
 
@@ -200,7 +205,7 @@ namespace CPRTouchVision
             canvas.Restore();
 
 
-            // Optional: Draw a border around the zone
+            // Draw a border around the zone
             using var borderPaint = new SKPaint
             {
                 Color = SKColors.Lime,
@@ -209,6 +214,65 @@ namespace CPRTouchVision
                 IsAntialias = true
             };
             canvas.DrawRect(touchZoneRect, borderPaint);
+        }
+
+        private void DrawTouchZonePolygon(SKCanvas canvas)
+        {
+            if (!_manager.IsTouchZoneSet)
+                return;
+
+            var paint = new SKPaint()
+            {
+                Style = SKPaintStyle.Fill,
+                Color = SKColors.Orange.WithAlpha(128),
+                IsAntialias = true
+            };
+
+            using var path = new SKPath();
+            path.MoveTo(_manager.DetectableSpace.Corner1.Screen);
+            path.LineTo(_manager.DetectableSpace.Corner2.Screen);
+            path.LineTo(_manager.DetectableSpace.Corner3.Screen);
+            path.LineTo(_manager.DetectableSpace.Corner4.Screen);
+            path.Close();
+
+
+            // Save the canvas layer to allow for blending
+            using var layerPaint = new SKPaint
+            {
+                BlendMode = SKBlendMode.SrcOver
+            };
+            canvas.SaveLayer(layerPaint);
+
+            // Fill entire canvas with translucent black (fade effect)
+            using var dimPaint = new SKPaint
+            {
+                Color = SKColors.Black.WithAlpha(160),
+                Style = SKPaintStyle.Fill
+            };
+            canvas.DrawRect(new SKRect(0, 0, _cw, _ch), dimPaint);
+
+            // Punch a transparent hole (by setting BlendMode to `DstOut`)
+            using var maskPaint = new SKPaint
+            {
+                BlendMode = SKBlendMode.DstOut,
+                Color = SKColors.Black, // Color doesn't matter here
+                Style = SKPaintStyle.Fill
+            };
+
+            canvas.DrawPath(path, maskPaint);
+
+            canvas.Restore();
+
+
+            // Optional: Draw a border around the zone
+            using var borderPaint = new SKPaint
+            {
+                Color = SKColors.Lime,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 2,
+                IsAntialias = true
+            };
+            canvas.DrawPath(path, borderPaint);
         }
 
         private SN.Vector3[] GetRectangleOnWall(SN.Vector3 p1, SN.Vector3 p2, SN.Vector3 planeNormal)
