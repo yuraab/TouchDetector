@@ -1,4 +1,4 @@
-﻿using HardwareDetection;
+﻿//using HardwareDetection;
 using Microsoft.UI.Xaml;
 using OBSharp;
 using System;
@@ -6,9 +6,12 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Windows.ApplicationModel;
 using WinUIEx.Messaging;
+
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -24,10 +27,10 @@ namespace CPRTouchVision
         private Window? _window;
         public App()
         {
-#if DEBUG
+
             ObSharpLogger.LogAction = Log;
             AttachConsole(); // Optional debug console
-#endif
+
             string? userHome = Environment.GetEnvironmentVariable("HOME");
             if (string.IsNullOrEmpty(userHome))
             {
@@ -57,7 +60,10 @@ namespace CPRTouchVision
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
                 var ex = e.ExceptionObject as Exception;
-                Log($"[UnhandledException] {ex?.Message}\n{ex?.StackTrace}");
+                //Log($"[UnhandledException] {ex?.Message}\n{ex?.StackTrace}");
+                var msg = $"[UnhandledException] {ex?.Message}\n{ex?.StackTrace}";
+                Console.WriteLine(msg); // Always works
+                File.AppendAllText("startup-errors.log", msg + Environment.NewLine);
             };
 
             TaskScheduler.UnobservedTaskException += (s, e) =>
@@ -67,12 +73,21 @@ namespace CPRTouchVision
             };
 
             // Assign GPU detection delegate early
+            /*
             TrackerInitHelper.GpuDetectionFunc = () =>
             {
-                bool hasGpu = GpuDetector.HasNvidiaGpu(out var name);
-                return (hasGpu, name);
+                try
+                {
+                    bool hasGpu = GpuDetector.HasNvidiaGpu(out var name);
+                    return (hasGpu, name);
+                }
+                catch (Exception ex)
+                {
+                    Log("GpuDetectionFunc error: " + ex.Message);
+                    return (false, null);
+                }
             };
-            
+            */
             InitializeComponent();
         }
 
@@ -82,6 +97,7 @@ namespace CPRTouchVision
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+;
             _window = new MainWindow();
             _window.Activate();
         }
@@ -100,8 +116,10 @@ namespace CPRTouchVision
         private static void AttachConsole()
         {
             AllocConsole();
-            Console.WriteLine("Debug console attached.");
-            Log("Console attached.");
+            Console.WriteLine("Console attached.");
+            Console.WriteLine("Calling Log now...");
+            Log("Debug console attached.");
+            Console.WriteLine("Returned from Log.");
         }
 
         private static readonly string LogFilePath = InitLogFilePath();
@@ -164,8 +182,11 @@ namespace CPRTouchVision
             {
                 Console.WriteLine($"Logging failed: {ex.GetType().Name} - {ex.Message}");
             }
+#else
+            Console.WriteLine("[RELEASE LOG] " + message);
 #endif
 
         }
     }
+
 }

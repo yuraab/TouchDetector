@@ -7,8 +7,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "cpr-touch-vision", "cpr-tou
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ob-sharp", "..\ob-sharp\ob-sharp.csproj", "{63B52AE7-07DF-CD84-285D-978BD755D5BC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HardwareDetection", "..\HardwareDetection\HardwareDetection.csproj", "{3B5C464A-8089-349F-FA4A-12FC368AC79C}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

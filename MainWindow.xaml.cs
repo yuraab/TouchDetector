@@ -4,7 +4,6 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using OBSharp.BodyTracking;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
 using System;
@@ -54,7 +53,7 @@ namespace CPRTouchVision
 
         private void OnDefineTouchZoneClicked(object? sender, RoutedEventArgs e)
         {
-            _manager.StartDefineZone();
+            _manager.StartCalibration();
         }
 
         private void OnManagerChanged(object? sender, TouchManagerEventType e)

@@ -304,11 +304,11 @@ namespace CPRTouchVision.Models
             }
 
             Task.Run(() => _oscClient.Send(touches));
-#if DEBUG
+
             string message = $"Total: {touches.Count}; " + string.Join("; ", touches.Select(t =>
             $"[id:{t.Id} center:({t.X:F2},{t.Y:F2}) r:{t.Radius:F2} ts:{t.Timestamp}]"));
             App.Log(message);
-#endif
+
 
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
         }
@@ -322,28 +322,6 @@ namespace CPRTouchVision.Models
         {
             // TODO: - Display Error
             App.Log("Touch loop failed");
-        }
-
-        public static Image CloneImage(Image source)
-        {
-            int width = source.WidthPixels;
-            int height = source.HeightPixels;
-            var format = source.Format;
-
-            int stride = format.StrideBytes(width);
-            int totalBytes = height * stride;
-
-            // Rent buffer and copy data
-            var memoryOwner = MemoryPool<byte>.Shared.Rent(totalBytes);
-            var destinationSpan = memoryOwner.Memory.Span.Slice(0, totalBytes);
-            // Convert raw pointer to Span
-            unsafe
-            {
-                var sourceSpan = new Span<byte>((void*)source.Buffer, totalBytes);
-                sourceSpan.CopyTo(destinationSpan);
-            }
-            // Create new image from memory
-            return Image.CreateFromMemory(memoryOwner, format, width, height, stride);
         }
 
         private void OnCaptureReady(object? sender, CaptureLoopEventArgs e)
