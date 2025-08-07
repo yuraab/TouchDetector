@@ -275,11 +275,18 @@ namespace CPRTouchVision.Models
             _touchLoop.TouchFrameReady += OnTouchFrameReady;
             _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
             _touchLoop.ReadyForNewImage += OnReadyForNewImage;
+            
             _touchLoop.Run();
             IsRunningTrackTouch = true;
             _isReadyReceiveNewCapture = true;
-
+            _detectableSpace.WallNotAligned += OnWallNotAligned;
             //_tracker = new(detectableSpace, _calibration);
+        }
+
+        private void OnWallNotAligned()
+        {
+            App.Log("Wall is not aligned to camera");
+            ResetTouchZone();
         }
 
         private void OnReadyForNewImage(object? sender, bool isReady)
@@ -439,6 +446,7 @@ namespace CPRTouchVision.Models
             {
                 _touchLoop.TouchFrameReady -= OnTouchFrameReady;
                 _touchLoop.TouchLoopFailed -= OnTouchLoopFailed;
+
                 _touchLoop.Dispose();
                 _touchLoop = null;
             }

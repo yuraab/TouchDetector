@@ -22,10 +22,21 @@ namespace CPRTouchVision.Models
         public float MinOffset { get; }
         public float MaxOffset { get; }
 
-        public DepthPoint Corner1 { get; set; }
-        public DepthPoint Corner2 { get; set; }
-        public DepthPoint Corner3 { get; set; }
-        public DepthPoint Corner4 { get; set; }
+        public DepthPoint Corner1 { get; private set; }
+        public DepthPoint Corner2 { get; private set; }
+        public DepthPoint Corner3 { get; private set; }
+        public DepthPoint Corner4 { get; private set; }
+
+        public Vector3 WallOrigin;
+        public Vector3 HorizontalVector;
+        public Vector3 VerticalVector;
+
+        public float SquaredHorizontal { get; private set; }
+        public float SquaredVertical { get; private set; }
+        public float HowAligned { get; private set; }
+        public float Denom { get; private set; }
+        public event Action WallNotAligned;
+        public Func<Vector3, bool> IsProjectedPointInVolume;
 
         public  DepthPoint[] WallLayer { get; }
         private DepthPoint[] Layer1;
@@ -79,6 +90,33 @@ namespace CPRTouchVision.Models
                     out c4);
 
             (Corner1, Corner2, Corner3, Corner4) = (c1, c2, c3, c4);
+
+            HorizontalVector = Corner2.World - Corner1.World;
+            VerticalVector = Corner4.World - Corner1.World;
+            SquaredHorizontal = Vector3.Dot(HorizontalVector, HorizontalVector);
+            SquaredVertical = Vector3.Dot(VerticalVector, VerticalVector);
+            HowAligned = Vector3.Dot(HorizontalVector, VerticalVector);
+            Denom = HowAligned * HowAligned - SquaredHorizontal * SquaredVertical;
+            
+            if (Math.Abs(Denom) < 1e-5f)
+            {
+                WallNotAligned?.Invoke();  
+            }
+
+            Vector3 cameraForward = new Vector3(0, 0, -1);
+
+            // Compute cosine of angle between normal and view
+            float facing = Math.Abs(Vector3.Dot(WallNormal, cameraForward));
+            if (facing >= 0.9f)
+            {
+                IsProjectedPointInVolume = IsProjectedPointInVolumeWhenWallAligned;
+                App.Log($"Wall is almost aligned to camera ({facing}). Switch to simple calculation");
+            }
+            else
+            {
+                IsProjectedPointInVolume = IsProjectedPointInVolumeWhenWallNotAligned;
+                App.Log($"Wall is not aligned to camera ({facing}). Switch to complex calculation");
+            }
 
             WallLayer = new DepthPoint[] { Corner1, Corner2, Corner3, Corner4 };
             Layer1 = GetLayer(minOffset);
@@ -199,6 +237,23 @@ namespace CPRTouchVision.Models
             // Project point onto wall plane
             Vector3 projected = point - WallNormal * distanceToPlane;
 
+            return IsProjectedPointInVolume(projected);
+        }
+
+        public bool IsProjectedPointInVolumeWhenWallNotAligned(Vector3 p)
+        {
+            Vector3 w = p - Corner1.World;       // vector from origin to point
+
+            float wu = Vector3.Dot(w, HorizontalVector);
+            float wv = Vector3.Dot(w, VerticalVector);
+
+            float s = (HowAligned * wv - SquaredVertical * wu) / Denom;
+            float t = (HowAligned * wu - SquaredHorizontal * wv) / Denom;
+            return s >= 0 && s <= 1 && t >= 0 && t <= 1;
+        }
+
+        public bool IsProjectedPointInVolumeWhenWallAligned(Vector3 projected)
+        {
             // Check if projected point lies within rectangular bounds
             return projected.X >= _minX && projected.X <= _maxX &&
                    projected.Y >= _minY && projected.Y <= _maxY &&
