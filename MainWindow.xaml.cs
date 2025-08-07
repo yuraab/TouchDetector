@@ -4,6 +4,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using OBSharp.Sensor;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
 using System;
@@ -338,6 +339,26 @@ namespace CPRTouchVision
             return _manager.CameraPosition + rayDir * t;
         }
 
+        private SKPath GetTouchZonePath(DepthPoint corner1, DepthPoint corner2)
+        {
+            DepthPoint c1, c2, c3, c4;
+            TouchZoneHelper.ComputeAllFourCorners(
+                    corner1, corner2,
+                    _manager.PlaneNormal,
+                    _manager.Calibration,
+                    out c1, out c2, out c3, out c4);
+
+            // Build path
+            var path = new SKPath();
+            path.MoveTo(c1.Screen);
+            path.LineTo(c2.Screen);
+            path.LineTo(c3.Screen);
+            path.LineTo(c4.Screen);
+            path.Close();
+
+            return path;
+        }
+
         private SKPath GetTouchZoneScreenPath(SN.Vector3 corner1, SN.Vector3 corner2)
         {
             // Reconstruct wall plane rectangle in 3D
@@ -376,10 +397,16 @@ namespace CPRTouchVision
 
         private void DrawProjectedTouchZoneByCursor(SKCanvas canvas)
         {
-            var corner1 = _manager.TouchZoneCornerWorld1;
-            var corner2 = ScreenToPlane(_manager.Cursor); // convert from screen to 3D
-            var path = GetTouchZoneScreenPath(corner1, corner2);
 
+            //var corner1 = _manager.TouchZoneCornerWorld1;
+            //var corner2 = ScreenToPlane(_manager.Cursor); // convert from screen to 3D
+            //var path = GetTouchZoneScreenPath(corner1, corner2);
+            var corner1 = _manager.TouchZoneCorner1;
+            int cursorX = (int)_manager.Cursor.X;
+            int cursorY = (int)_manager.Cursor.Y;
+            var corner2 = _manager.Convert2DToDepthPoint(cursorX, cursorY);
+
+            var path = GetTouchZonePath(corner1, corner2);
             var paint = new SKPaint()
             {
                 Style = SKPaintStyle.Stroke,
@@ -417,8 +444,8 @@ namespace CPRTouchVision
 
         private void DrawTouchZoneByCursor(SKCanvas canvas)
         {
-            //DrawProjectedTouchZoneByCursor(canvas);
-            DrawRectTouchZoneByCursor(canvas);
+            DrawProjectedTouchZoneByCursor(canvas);
+            //DrawRectTouchZoneByCursor(canvas);
         }
         private void DrawCursor(SKCanvas canvas)
         {

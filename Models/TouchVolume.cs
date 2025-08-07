@@ -22,9 +22,9 @@ namespace CPRTouchVision.Models
         public float MinOffset { get; }
         public float MaxOffset { get; }
 
-        public DepthPoint Corner1 { get; }
+        public DepthPoint Corner1 { get; set; }
         public DepthPoint Corner2 { get; set; }
-        public DepthPoint Corner3 { get; }
+        public DepthPoint Corner3 { get; set; }
         public DepthPoint Corner4 { get; set; }
 
         public  DepthPoint[] WallLayer { get; }
@@ -66,70 +66,20 @@ namespace CPRTouchVision.Models
             MinOffset = minOffset;
             MaxOffset = maxOffset;
 
-            // Store corners of the working area (rectangle on wall plane) on clockwise
-            if (wallCorner1.SX < wallCorner2.SX)
-            {
-                Corner1 = wallCorner1;
-                Corner3 = wallCorner2;
-            }
-            else
-            {
-                Corner3 = wallCorner1;
-                Corner1 = wallCorner2;
-            }
+            DepthPoint c1, c2, c3, c4;
 
-            //alculate Corner2 and Corner$
-            Vector3 diag = Corner3.World - Corner1.World;
-            // Pick any vector not parallel to normal
-            Vector3 arbitrary = Math.Abs(WallNormal.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY;
-            // First direction in the plane
-            Vector3 dir1 = Vector3.Normalize(Vector3.Cross(WallNormal, arbitrary));
+            TouchZoneHelper.ComputeAllFourCorners(
+                    wallCorner1,
+                    wallCorner2,
+                    WallNormal,
+                    _calibration,
+                    out c1,
+                    out c2,
+                    out c3,
+                    out c4);
 
-            // Second direction orthogonal to both normal and dir1
-            Vector3 dir2 = Vector3.Normalize(Vector3.Cross(WallNormal, dir1));
+            (Corner1, Corner2, Corner3, Corner4) = (c1, c2, c3, c4);
 
-            //project diag onto dir1 and dir2
-            float d1 = Vector3.Dot(diag, dir1);
-            float d2 = Vector3.Dot(diag, dir2);
-
-            Vector3 half1 = dir1 * (d1 / 2);
-            Vector3 half2 = dir2 * (d2 / 2);
-
-            Vector3 center = (Corner1.World + Corner3.World) / 2;
-
-            Vector3 c2 = center + half1 - half2;
-            Vector3 c4 = center - half1 + half2;
-
-            // Calculate 2D projection of Corner2
-            var p = _calibration.Convert3DTo2D(new(c2.X, c2.Y, c2.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-            int x, y;
-            if (p.HasValue)
-            {
-                x = (int)p.Value.X;
-                y = (int)p.Value.Y;
-            }
-            else
-            {
-                // assume from corner1 and corner3
-                x = Corner3.SX;
-                y = Corner1.SY;
-            }
-            Corner2 = DepthPoint.From(x, y, c2.X, c2.Y, c2.Z);
-
-            // Calculate 2D projection of Corner4
-            p = _calibration.Convert3DTo2D(new(c4.X, c4.Y, c4.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-            if (p.HasValue)
-            {
-                x = (int)p.Value.X;
-                y = (int)p.Value.Y;
-            }
-            else
-            {
-                // assume from corner1 and corner3
-                x = Corner1.SX;
-                y = Corner3.SY;
-            }
-            Corner4 = DepthPoint.From(x, y, c4.X, c4.Y, c4.Z);
             WallLayer = new DepthPoint[] { Corner1, Corner2, Corner3, Corner4 };
             Layer1 = GetLayer(minOffset);
             Layer2 = GetLayer(maxOffset);
@@ -168,18 +118,8 @@ namespace CPRTouchVision.Models
             App.Log($"Processing size: {(maxSX - minSX)}*{(maxSY - minSY)} = {(maxSX - minSX) * (maxSY - minSY)}");
 
 #endif
-            /*
-            int sx = Corner3.SX; 
-            int sy = Corner1.SY;
-            Vector3 p = _calibration.Convert2DTo3D(new(sx, sy), CalibrationGeometry.Color, CalibrationGeometry.Depth);
-            Corner2 = DepthPoint.From(sx, sy, p.X, p.Y, p.Z);
 
-            int sx = Corner1.SX;
-            int sy = Corner3.SY;
-            Vector3 p = _calibration.Convert2DTo3D(new(sx, sy), CalibrationGeometry.Color, CalibrationGeometry.Depth);
-            Corner4 = DepthPoint.From(sx, sy, p.X, p.Y, p.Z);
-            */
-            // Otionally precompute bounds for faster volume checks
+            // Precompute bounds for faster volume checks
 
             _minX = MathF.Min(Corner1.World.X, Corner3.World.X);
             _maxX = MathF.Max(Corner1.World.X, Corner3.World.X);
@@ -316,5 +256,76 @@ namespace CPRTouchVision.Models
             return result;
         }
     }
+
+    public static class TouchZoneHelper
+    {
+        /// <summary>
+        /// Calculates the four corners of a parallelogram on a wall plane, given two diagonal points.
+        /// </summary>
+        /// <param name="wallCorner1">First corner (in screen + world space).</param>
+        /// <param name="wallCorner2">Opposite corner (in screen + world space).</param>
+        /// <param name="wallNormal">Normal vector of the wall plane.</param>
+        /// <param name="calibration">Calibration object to project 3D to 2D.</param>
+        /// <param name="corner1">Output corner 1</param>
+        /// <param name="corner2">Output corner 2</param>
+        /// <param name="corner3">Output corner 3</param>
+        /// <param name="corner4">Output corner 4</param>
+        public static void ComputeAllFourCorners(
+            DepthPoint wallCorner1,
+            DepthPoint wallCorner2,
+            Vector3 wallNormal,
+            Calibration calibration,
+            out DepthPoint corner1,
+            out DepthPoint corner2,
+            out DepthPoint corner3,
+            out DepthPoint corner4)
+        {
+            // Assign corners based on screen X to maintain consistent winding
+            if (wallCorner1.SX < wallCorner2.SX)
+            {
+                corner1 = wallCorner1;
+                corner3 = wallCorner2;
+            }
+            else
+            {
+                corner3 = wallCorner1;
+                corner1 = wallCorner2;
+            }
+
+            Vector3 diag = corner3.World - corner1.World;
+
+            // Arbitrary vector not aligned with the normal
+            Vector3 arbitrary = Math.Abs(wallNormal.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY;
+
+            // Two perpendicular vectors in the plane
+            Vector3 dir1 = Vector3.Normalize(Vector3.Cross(wallNormal, arbitrary));
+            Vector3 dir2 = Vector3.Normalize(Vector3.Cross(wallNormal, dir1));
+
+            // Project the diagonal onto dir1 and dir2 to find the sides
+            float d1 = Vector3.Dot(diag, dir1);
+            float d2 = Vector3.Dot(diag, dir2);
+
+            Vector3 half1 = dir1 * (d1 / 2);
+            Vector3 half2 = dir2 * (d2 / 2);
+            Vector3 center = (corner1.World + corner3.World) / 2;
+
+            // Compute world positions for corner2 and corner4
+            Vector3 c2 = center + half1 - half2;
+            Vector3 c4 = center - half1 + half2;
+
+            // Project corner2
+            var p = calibration.Convert3DTo2D(new(c2.X, c2.Y, c2.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+            int x2 = p.HasValue ? (int)p.Value.X : corner3.SX;
+            int y2 = p.HasValue ? (int)p.Value.Y : corner1.SY;
+            corner2 = DepthPoint.From(x2, y2, c2.X, c2.Y, c2.Z);
+
+            // Project corner4
+            p = calibration.Convert3DTo2D(new(c4.X, c4.Y, c4.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+            int x4 = p.HasValue ? (int)p.Value.X : corner1.SX;
+            int y4 = p.HasValue ? (int)p.Value.Y : corner3.SY;
+            corner4 = DepthPoint.From(x4, y4, c4.X, c4.Y, c4.Z);
+        }
+    }
+
 }
 

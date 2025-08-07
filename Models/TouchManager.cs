@@ -107,6 +107,7 @@ namespace CPRTouchVision.Models
 
         private bool _disposed = false;
         private Calibration _calibration = new();
+        public Calibration Calibration => _calibration;
         private Transformation? _transformation;
 
         // Getting data from the camera
@@ -660,12 +661,8 @@ namespace CPRTouchVision.Models
 #endif
             return pointD;
         }
-
-        public async void AddTouchZonePoint(int pointX, int pointY)
+        public DepthPoint Convert2DToDepthPoint(int pointX, int pointY)
         {
-            if (!IsSelectingTouchZone)
-                return;
-
             var d = GetDepth(new(pointX, pointY));
 
             if (d <= 0)
@@ -673,31 +670,29 @@ namespace CPRTouchVision.Models
 #if DEBUG
                 App.Log("Invalid depth at point");
 #endif
-                return;
+                return DepthPoint.Empty;
             }
 
             var p3D = Convert2DTo3DPoint(pointX, pointY, d);
-            var projectedPoint= ProjectPointOntoPlane(p3D);
+            return ProjectPointOntoPlane(p3D);
+        }
 
+        public async void AddTouchZonePoint(int pointX, int pointY)
+        {
+            if (!IsSelectingTouchZone)
+                return;
+
+            var projectedPoint = Convert2DToDepthPoint(pointX, pointY);
+
+            if (projectedPoint.IsEmpty) return;
 
             if (_touchZoneCorner1.IsEmpty)
             {
                 _touchZoneCorner1 = projectedPoint;
-#if DEBUG
-                var p = _touchZoneCorner1.World;
-                App.Log($"Corner point1 defined: Screen: v={pointX}, y={pointY}; World: x={p3D.X}, y={p3D.Y}, z={p3D.Z}; Depth={d}");
-                App.Log($"Corner point1 added: Screen: v={pointX}, y={pointY}; World: x={p.X}, y={p.Y}, z={p.Z}; Depth={d}");
-#endif
             }
             else
             {
                 _touchZoneCorner2 = projectedPoint;
-#if DEBUG
-                var p = _touchZoneCorner2.World;
-                App.Log($"Corner point2 defined: Screen: v={pointX}, y={pointY}; World: x={p3D.X}, y={p3D.Y}, z={p3D.Z}; Depth={d}");
-                App.Log($"Corner point2 added: Screen: x={pointX}, y={pointY}; World: x={p.X}, y={p.Y}, z={p.Z}");
-#endif
-
 
                 IsSelectingTouchZone = false;
                 IsTouchZoneSet = true;
