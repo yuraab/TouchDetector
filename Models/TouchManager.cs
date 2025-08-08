@@ -4,6 +4,7 @@ using ComputeSharp;
 using Emgu.CV;
 using Emgu.CV.Dai;
 using Microsoft.UI;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -58,22 +59,19 @@ namespace CPRTouchVision.Models
         string _cursorLabel = "";
 
         [ObservableProperty]
-        bool _isFloorLevelSet = false;
-
-        [ObservableProperty]
         bool _isWallPlaneSet = false;
 
         [ObservableProperty]
         bool _isTouchZoneSet = false;
 
         [ObservableProperty]
-        string _floorLevelStatus = "Not set";
+        string _wallPlaneStatus = "Not set";
 
         [ObservableProperty]
         string _touchZoneStatus = "Not set";
 
         [ObservableProperty]
-        Brush _floorLevelForeground = new SolidColorBrush(Colors.OrangeRed);
+        Brush _wallPlaneForeground = new SolidColorBrush(Colors.OrangeRed);
 
         [ObservableProperty]
         Brush _touchZoneForeground = new SolidColorBrush(Colors.OrangeRed);
@@ -96,14 +94,20 @@ namespace CPRTouchVision.Models
         [ObservableProperty]
         bool _isTouchZone = false;
 
-        [ObservableProperty]
-        int _offset = 15;
+        //[ObservableProperty]
+        //int _offset = 15;
 
         [ObservableProperty]
-        int _minOffset = 5;
+        int _minOffset;
 
         [ObservableProperty]
-        int _maxOffset = 15;
+        int _maxOffset;
+
+        [ObservableProperty]
+        int _gameScreenWidth;
+
+        [ObservableProperty]
+        int _gameScreenHeight;
 
         private bool _disposed = false;
         private Calibration _calibration = new();
@@ -122,7 +126,7 @@ namespace CPRTouchVision.Models
         //private byte[] _depthPixels = [];
 
         private List<Vector3> _calibrationPoints = new();
-        private List<Vector3> _touchZonePoints = new();
+        private List<DepthPoint> _touchZonePoints = new();
 
         //private TouchTracker _tracker;
 
@@ -154,7 +158,9 @@ namespace CPRTouchVision.Models
 
         private readonly object _depthLock = new object();
         private readonly int _defaltMaxOffset = 15;
-        private readonly int _defaltMinOffset = 1;
+        private readonly int _defaltMinOffset = 5;
+        private readonly int _defaultGameScreenWidth = 1920;
+        private readonly int _defaultGameScreenHeight = 1080;
         private OSCClient _oscClient = new();
 
         public DoubleBufferedBitmap ColorBitmap => _colorBitmap;
@@ -172,7 +178,7 @@ namespace CPRTouchVision.Models
         public Vector3 CameraPosition => _cameraPosition;
 
         public Vector3[] CalibrationPoints => _calibrationPoints.ToArray();
-        public Vector3[] TouchZonePoints => _touchZonePoints.ToArray();
+        public DepthPoint[] TouchZonePoints => _touchZonePoints.ToArray();
         public DepthPoint TouchZoneCorner1 => _touchZoneCorner1;
         public DepthPoint TouchZoneCorner2 => _touchZoneCorner2;
         public Vector3 TouchZoneCornerWorld1 => _touchZoneCorner1.World;
@@ -193,6 +199,7 @@ namespace CPRTouchVision.Models
         
 #endif
         public const int CalibrationPointsCount = 3;
+        public const int TouchPointsCount = 4;
         private bool _isReadyReceiveNewCapture = false;
         private DepthPoint[] _touchZoneCorners;
         private IntPtr _noiseFilter;
@@ -208,6 +215,8 @@ namespace CPRTouchVision.Models
             _depthBitmap = new DoubleBufferedBitmap(_colorBitmapInfo);
             MaxOffset = _defaltMaxOffset;
             MinOffset = _defaltMinOffset;
+            GameScreenWidth = _defaultGameScreenWidth;
+            GameScreenHeight = _defaultGameScreenHeight;
         }
 
         public void Toggle()
@@ -493,7 +502,7 @@ namespace CPRTouchVision.Models
                 return;
 
             _calibrationPoints.Clear();
-            IsFloorLevelSet = false;
+            //IsWallPlaneSet = false;
             IsWallPlaneSet = false;
             IsCalibrating = true;
             ResetTouchZone();
@@ -561,7 +570,7 @@ namespace CPRTouchVision.Models
                         _planeNormal = config.PlaneNormal.Value;
                         _cameraRotation = config.CameraRotation.HasValue ? config.CameraRotation.Value : System.Numerics.Quaternion.Identity;
                         _cameraPosition = config.CameraPosition.HasValue ? config.CameraPosition.Value : Vector3.Zero;
-                        IsFloorLevelSet = true;
+                        IsWallPlaneSet = true;
                         IsWallPlaneSet = true; 
                     }
 
@@ -571,17 +580,19 @@ namespace CPRTouchVision.Models
                         _touchZoneCorner2 = config.TouchZoneCorner2.Value;
                         IsTouchZoneSet = true;
                     }
-                    if (config.MinOffset.HasValue)
-                    {
-                        MinOffset = config.MinOffset.Value;
-                    }
-                    if (config.MaxOffset.HasValue)
-                    {
-                        MaxOffset = config.MaxOffset.Value;
-                    }
+
+                    MinOffset = config.MinOffset ?? _defaltMinOffset;
+                    MaxOffset = config.MaxOffset ?? _defaltMaxOffset;
+                    GameScreenWidth = config.GameScreenWidth ?? _defaultGameScreenWidth;
+                    GameScreenHeight = config.GameScreenHeight ?? _defaultGameScreenHeight;
+#if DEBUG
+                    App.Log($"GameScreenWidth: {GameScreenWidth}");
+                    App.Log($"GameScreenHeight: {GameScreenHeight}");
+#endif
                 }
             }
             _isConfigGotten = true;
+            
         }
 
         public async Task SaveConfig()
@@ -589,6 +600,8 @@ namespace CPRTouchVision.Models
 
             if (!_isConfigGotten) return; // To avoid a call SaveConfig before Config was loaded
             var config = new Config(
+                GameScreenWidth,
+                GameScreenHeight,
                 MinOffset,
                 MaxOffset,
                 _planeD == float.MinValue ? null : _planeD,
@@ -694,6 +707,18 @@ namespace CPRTouchVision.Models
 
             if (projectedPoint.IsEmpty) return;
 
+            _touchZonePoints.Add(projectedPoint);
+
+            if (_touchZonePoints.Count == TouchPointsCount)
+            {
+                IsSelectingTouchZone = false;
+                IsTouchZoneSet = true;
+                IsFittingPlane = false;
+
+                await SaveConfig();
+                CheckIsReadyRunTouchLoop();
+            }
+           
             if (_touchZoneCorner1.IsEmpty)
             {
                 _touchZoneCorner1 = projectedPoint;
@@ -708,8 +733,8 @@ namespace CPRTouchVision.Models
 
                 await SaveConfig();
                 CheckIsReadyRunTouchLoop();
-
             }
+            
         }
         private List<Vector3> ScalePoints(List<Vector3> originalPoints, int fromWidth, int fromHeight, int toWidth, int toHeight)
         {
@@ -805,7 +830,7 @@ namespace CPRTouchVision.Models
 
             await SaveConfig();
             IsWallPlaneSet = true;
-            IsFloorLevelSet = true;
+            IsWallPlaneSet = true;
             IsFittingPlane = false;
             IsTouchZoneToggleEnabled = true;
             Vector3 planeN = Vector3.Zero;
@@ -972,8 +997,8 @@ namespace CPRTouchVision.Models
 
             if (IsFittingPlane)
             {
-                FloorLevelStatus = "Defining...";
-                FloorLevelForeground = new SolidColorBrush(Colors.DarkGray);
+                WallPlaneStatus = "Defining...";
+                WallPlaneForeground = new SolidColorBrush(Colors.DarkGray);
             }
             CheckIsReadyRunTouchLoop();
         }
@@ -991,10 +1016,10 @@ namespace CPRTouchVision.Models
         }
 
 
-        partial void OnIsFloorLevelSetChanged(bool value)
+        partial void OnIsWallPlaneSetChanged(bool value)
         {
-            FloorLevelStatus = value ? "Set" : "Not Set";
-            FloorLevelForeground = new SolidColorBrush(value ? Colors.Green : Colors.OrangeRed);
+            WallPlaneStatus = value ? "Set" : "Not Set";
+            WallPlaneForeground = new SolidColorBrush(value ? Colors.Green : Colors.OrangeRed);
             CheckIsReadyRunTouchLoop();
         }
         partial void OnIsTouchZoneSetChanged(bool value)
@@ -1049,6 +1074,22 @@ namespace CPRTouchVision.Models
             }
         }
 
+        partial void OnGameScreenWidthChanged(int value)
+        {
+#if DEBUG
+            App.Log($"GameScreenWidth changed to {GameScreenWidth}");
+            App.Log($"GameScreenHeight = {GameScreenHeight}");
+#endif
+            _ = SaveConfig();
+        }
+        partial void OnGameScreenHeightChanged(int value)
+        {
+#if DEBUG
+            App.Log($"GameScreenWidth = {GameScreenWidth}");
+            App.Log($"GameScreenHeight changed to {GameScreenHeight}");
+#endif
+            _ = SaveConfig();
+        }
         partial void OnIsReadyTrackTouchChanged(bool value)
         {
             if (IsRunning && IsReadyTrackTouch)

@@ -5,6 +5,8 @@ namespace CPRTouchVision.Models
     // Class to hold configuration and calibration data for the application.
     internal class Config
     {
+        public int? GameScreenWidth;
+        public int? GameScreenHeight;
         public int? MinOffset;
         public int? MaxOffset;
         public float? PlaneD;
@@ -16,6 +18,8 @@ namespace CPRTouchVision.Models
 
 
         public Config(
+            int? gameScreenWidth,
+            int? gameScreenHeight,
             int? minOffset, 
             int? maxOffset, 
             float? planeD, 
@@ -27,6 +31,8 @@ namespace CPRTouchVision.Models
         )
 
         {
+            GameScreenWidth = gameScreenWidth;
+            GameScreenHeight = gameScreenHeight;
             MinOffset = minOffset;
             MaxOffset = maxOffset; 
             PlaneD = planeD;

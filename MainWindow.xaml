@@ -10,7 +10,7 @@
     xmlns:sk="using:SkiaSharp.Views.Windows"
     mc:Ignorable="d"
     Width="800"
-    Height="500"
+    Height="600"
     Title="CPR Touch Vision">
 
     <Grid>
@@ -38,8 +38,8 @@
                     <TextBlock Text="Wall Plane"
                        Style="{ThemeResource SubtitleTextBlockStyle}"
                        VerticalAlignment="Center" />
-                    <TextBlock Text="{x:Bind _manager.FloorLevelStatus, Mode=OneWay}"
-                       Foreground="{x:Bind _manager.FloorLevelForeground, Mode=OneWay}"
+                    <TextBlock Text="{x:Bind _manager.WallPlaneStatus, Mode=OneWay}"
+                       Foreground="{x:Bind _manager.WallPlaneForeground, Mode=OneWay}"
                        VerticalAlignment="Center"
                        Grid.Column="1"/>
                 </Grid>
@@ -49,7 +49,7 @@
                    Margin="0 0 0 0" />
                 
                 <Button Content="Define"
-                Click="OnDefineFloorClicked"
+                Click="OnDefineWallPlaneClicked"
                 HorizontalAlignment="Stretch"
                 IsEnabled="{x:Bind _manager.IsCalibrationToggleEnabled, Mode=OneWay}"
                 Margin="0 10 0 0" />
@@ -100,6 +100,28 @@
                                Value="{x:Bind _manager.MaxOffset, Mode=TwoWay}"
                                Minimum="0"
                                Maximum="100"
+                               Width="100"/>
+                </StackPanel>
+
+                <!-- Resolution Game Screen -->
+                <TextBlock Text="Game Screen Resolution"
+                           Style="{ThemeResource SubtitleTextBlockStyle}"
+                           Margin="0 30 0 0"/>
+                <TextBlock Text="Game Screen Resolution in pixels."
+                           Style="{ThemeResource CaptionTextBlockStyle}" />
+
+                <StackPanel Orientation="Horizontal"
+                            Margin="0 10 0 0"
+                            Spacing="10">
+                    <NumberBox Header="Screen Width (Horizontal)"
+                               Value="{x:Bind _manager.GameScreenWidth, Mode=TwoWay}"
+                               Minimum="100"
+                               Maximum="5000"
+                               Width="100"/>
+                    <NumberBox Header="Screen Height (Vertical)"
+                               Value="{x:Bind _manager.GameScreenHeight, Mode=TwoWay}"
+                               Minimum="100"
+                               Maximum="5000"
                                Width="100"/>
                 </StackPanel>
             </StackPanel>

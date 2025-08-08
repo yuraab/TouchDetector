@@ -32,14 +32,11 @@ namespace CPRTouchVision
         private bool _singleOutPutDone = false;
 #endif
 
-        //private bool _isClosingTrampoline = false;
-
         public MainWindow()
         {
             _ = _manager.LoadConfig();
             InitializeComponent();
             _manager.Changed += OnManagerChanged;
-            
         }
 
         private void OnToggleClicked(object sender, RoutedEventArgs e)
@@ -47,7 +44,7 @@ namespace CPRTouchVision
             _manager.Toggle();
         }
 
-        private void OnDefineFloorClicked(object? sender, RoutedEventArgs e)
+        private void OnDefineWallPlaneClicked(object? sender, RoutedEventArgs e)
         {
             _manager.StartCalibration();
         }
