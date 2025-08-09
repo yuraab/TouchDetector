@@ -13,8 +13,7 @@ using OB = OBSharp;
 
 namespace CPRTouchVision.Models
 {
-    public class TouchVolume
-
+    public class TouchVolumeRect
     {
         public Vector3 WallNormal { get; }
         public float WallDistance { get; }
@@ -59,7 +58,7 @@ namespace CPRTouchVision.Models
         public int minSY => _minSY;
         public int maxSY => _maxSY;
 
-        public TouchVolume(Vector3 wallNormal, float wallDistance,
+        public TouchVolumeRect(Vector3 wallNormal, float wallDistance,
                            float minOffset, float maxOffset,
                            DepthPoint wallCorner1, DepthPoint wallCorner2,
                            int fw, int fh,
@@ -380,6 +379,293 @@ namespace CPRTouchVision.Models
             int y4 = p.HasValue ? (int)p.Value.Y : corner3.SY;
             corner4 = DepthPoint.From(x4, y4, c4.X, c4.Y, c4.Z);
         }
+    }
+
+    public class TouchVolume
+    {
+        public DepthPoint[] Polygon { get; private set; } // Always 4 points in world space
+
+        public Vector2[] Polygon2D { get; private set; }
+        public Vector3 WallNormal { get; private set; }
+        public float WallDistance { get; private set; }
+        public float MinOffset { get; private set; }
+        public float MaxOffset { get; private set; }
+
+        // For optimization
+        private Vector3 _origin;
+        private Vector3 _uAxis, _vAxis;
+        private Vector3 planePolygonNormal;
+        private Mat _homography;
+        private OB.Float3 _uF3, _vF3;
+        private float _uu, _vv, _uv, _denom;
+
+        private Vector3 _axisU, _axisV; // local axises on the wall
+
+        private int _minSX, _maxSX, _minSY, _maxSY;
+        private ushort _minD, _maxD;
+
+        public Func<OB.Float3, bool> IsProjectedPointInVolume;
+        private float _triangleArea012;
+        private readonly float _triangleArea023;
+
+        public event Action? WallNotAligned;
+
+        private readonly object _depthLock = new();
+        private readonly Calibration _calibration;
+        private readonly int _fw, _fh;
+        int counter = 0;
+        public TouchVolume(
+            Vector3 planeNormal,
+            float PlaneDistance, 
+            float minOffset,
+            float maxOffset,
+            DepthPoint[] polygon,
+            ushort minWalDepth,
+            ushort maxWalDepth,
+            int fw, int fh,
+            Calibration calibration)
+        {
+            if (polygon == null || polygon.Length != 4)
+                WallNotAligned?.Invoke();
+
+            counter = 0;
+
+            Polygon = polygon;
+            Polygon2D =  new Vector2[4];
+            MinOffset = minOffset;
+            MaxOffset = maxOffset;
+            _minD = minWalDepth > maxOffset ? (ushort)(minWalDepth - maxOffset) : ushort.MinValue;
+            _maxD = maxWalDepth > minOffset ? (ushort)(maxWalDepth - minOffset) : maxWalDepth;
+            _fw = fw;
+            _fh = fh;
+            _calibration = calibration;
+
+            WallNormal = planeNormal;
+            WallDistance = PlaneDistance;
+
+            // Store main reference vectors for parametric form
+            _origin = Polygon[0].World;
+            _uAxis = Vector3.Normalize(Polygon[1].World - Polygon[0].World); // horizontal-ish
+            _uF3 = new(_uAxis.X, _uAxis.Y, _uAxis.Z);
+            var diag = Polygon[3].World - Polygon[0].World; 
+            var diagProjectedOnU = _uAxis * Vector3.Dot(diag, _uAxis);
+            _vAxis = Vector3.Normalize(diag - diagProjectedOnU); // vertical-ish
+            _vF3 = new(_vAxis.X, _vAxis.Y, _vAxis.Z);
+            Vector3 planePoligonNormal = Vector3.Normalize(Vector3.Cross(_uAxis, _vAxis));
+
+            _uu = Vector3.Dot(_uAxis, _uAxis);
+            _vv = Vector3.Dot(_vAxis, _vAxis);
+            _uv = Vector3.Dot(_uAxis, _vAxis);
+            _denom = _uv * _uv - _uu * _vv;
+
+            if (Math.Abs(_denom) < 1e-5f)
+            {
+                WallNotAligned?.Invoke();
+            }
+
+            // Pick axisU as any vector perpendicular to normal
+            _axisU = Math.Abs(WallNormal.X) > 0.9f ? Vector3.UnitY : Vector3.UnitX;
+            _axisU = Vector3.Normalize(Vector3.Cross(WallNormal, _axisU));
+            // Vector perpendicular to _axisU
+            _axisV = Vector3.Cross(WallNormal, _axisU);
+
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 corner = Polygon[i].World - _origin;
+
+                // Project onto u and v to get 2D coordinates
+                float x = Vector3.Dot(corner, _uAxis);
+                float y = Vector3.Dot(corner, _vAxis);
+
+                Polygon2D[i] = new Vector2(x, y);
+            }
+
+            _triangleArea012 = TriangleArea(Polygon2D[0], Polygon2D[1], Polygon2D[2]);
+            _triangleArea023 = TriangleArea(Polygon2D[0], Polygon2D[2], Polygon2D[3]);
+
+            // Precompute min/max bounds in world space for the aligned case
+            /*
+            _minX = Polygon.Min(p => p.World.X);
+            _maxX = Polygon.Max(p => p.World.X);
+            _minY = Polygon.Min(p => p.World.Y);
+            _maxY = Polygon.Max(p => p.World.Y);
+            _minZ = Polygon.Min(p => p.World.Z);
+            _maxZ = Polygon.Max(p => p.World.Z);
+            */
+            // Precompute screen/depth bounds for scan restriction
+            _minSX = _fw; _maxSX = 0;
+            _minSY = _fh; _maxSY = 0;
+          
+
+            UpdateScreenMinMax(Polygon, minOffset);
+            UpdateScreenMinMax(Polygon, maxOffset);
+#if DEBUG
+            App.Log($"Filter points should be into => {WallDistance - MinOffset} - {WallDistance - MaxOffset}");
+            App.Log($"Filter points into distance => {_maxD} - {_minD}");
+            App.Log($"Filter points into X => {_minSX} - {_maxSX}");
+            App.Log($"Filter points into Y => {_minSY} - {_maxSY}");
+#endif
+            //Get the 2D source quad coordinates
+            var src0 = ProjectPlanePointToUV(_origin); // should be (0,0)
+            var src1 = ProjectPlanePointToUV(Polygon[1].World);
+            var src2 = ProjectPlanePointToUV(Polygon[2].World);
+            var src3 = ProjectPlanePointToUV(Polygon[3].World);
+            // prepare arrays of Point2f
+            Point2f[] srcPts = new[] {
+                new Point2f(src0.X, src0.Y),
+                new Point2f(src1.X, src1.Y),
+                new Point2f(src2.X, src2.Y),
+                new Point2f(src3.X, src3.Y)
+            };
+            Point2f[] dstPts = new[] {
+                new Point2f(0f, 0f),
+                new Point2f(1f, 0f),
+                new Point2f(1f, 1f),
+                new Point2f(0f, 1f)
+            };
+
+            _homography = Cv2.GetPerspectiveTransform(srcPts, dstPts); // 3x3 homography
+        }
+
+        private void UpdateScreenMinMax(DepthPoint[] poly, float offset)
+        {
+            foreach (var p in poly)
+            {
+                var shifted = p.World - WallNormal * offset; // point shifted from wall on offset
+                var proj = _calibration.Convert3DTo2D(new(shifted.X, shifted.Y, shifted.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+
+                int sx = p.SX, sy = p.SY;
+                if (proj.HasValue)
+                {
+                    sx = (int)proj.Value.X;
+                    sy = (int)proj.Value.Y;
+                }
+
+                if (sx < _minSX) _minSX = sx;
+                if (sx > _maxSX) _maxSX = sx;
+                if (sy < _minSY) _minSY = sy;
+                if (sy > _maxSY) _maxSY = sy;
+
+            }
+        }
+
+        public bool IsPointInVolume(OB.Float3 point)
+        {
+            float distanceToPlane = WallNormal.X * point.X
+                       + WallNormal.Y * point.Y
+                       + WallNormal.Z * point.Z
+                       + WallDistance; 
+
+            if (distanceToPlane > MaxOffset || distanceToPlane < MinOffset) 
+                return false;
+
+            counter++;
+
+            // Get 3D projected point
+            Vector3 projected = new Vector3(
+                point.X - WallNormal.X * distanceToPlane,
+                point.Y - WallNormal.Y * distanceToPlane,
+                point.Z - WallNormal.Z * distanceToPlane
+            ) - _origin;
+
+            // Get 2D projected point
+            // Project onto u and v to get 2D coordinates
+            float x = Vector3.Dot(projected, _uAxis);
+            float y = Vector3.Dot(projected, _vAxis);
+
+            var point2D = new Vector2(x, y);
+
+            return PointInTriangle(point2D, Polygon2D[0], Polygon2D[1], Polygon2D[2], _triangleArea012) ||
+                   PointInTriangle(point2D, Polygon2D[0], Polygon2D[2], Polygon2D[3], _triangleArea023);
+        }
+
+
+        bool PointInTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c, float areaOrig)
+        {
+            float areaSum = TriangleArea(a, b, p) +
+                            TriangleArea(b, c, p) +
+                            TriangleArea(a, c, p);
+
+            return Math.Abs(areaOrig - areaSum) < 1e-4f;
+        }
+
+        private static float TriangleArea(Vector2 p1, Vector2 p2, Vector2 p3)
+        {
+            return 0.5f * Math.Abs(
+                p1.X * (p2.Y - p3.Y) +
+                p2.X * (p3.Y - p1.Y) +
+                p3.X * (p1.Y - p2.Y)
+            );
+        }
+
+        public static float Dot(OB.Float3 a, OB.Float3 b)
+        {
+            return a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+        }
+
+        public List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage)
+        {
+            var result = new List<OB.Float3>();
+            int step = 2;
+            lock (_depthLock)
+            {
+                var localLists = new List<OB.Float3>[Environment.ProcessorCount];
+                Parallel.For(0, localLists.Length, i => localLists[i] = new List<OB.Float3>());
+
+                Parallel.ForEach(
+                    Partitioner.Create(_minSY, _maxSY),
+                    new ParallelOptions { MaxDegreeOfParallelism = localLists.Length },
+                    () => new List<OB.Float3>(),
+                    (range, _, localList) =>
+                    {
+                        for (int y = range.Item1; y < range.Item2; y++)
+                        {
+                            if ((y - _minSY) % step != 0) continue;
+
+                            for (int x = _minSX; x < _maxSX; x += step)
+                            {
+                                int index = y * _fw + x;
+                                float d = depthImage[index];
+
+                                if (d <= 0 || d < _minD || d > _maxD) continue;
+
+                                var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
+                                if (world == null) continue;
+
+                                if (IsPointInVolume(world.Value))
+                                    localList.Add(world.Value);
+
+                            }
+                        }
+                        return localList;
+                    },
+                    localList => { lock (result) result.AddRange(localList); });
+            }
+
+            return result;
+        }
+        Vector3 GetProjectionToPlane(Vector3 point)
+        {
+            var distanceToPlane = Vector3.Dot(WallNormal, point) + WallDistance;
+            return point - WallNormal * distanceToPlane;
+        }
+        Vector2 ProjectPlanePointToUV(Vector3 P)
+        {
+            Vector3 r = P - _origin;
+            float s = Vector3.Dot(r, _uAxis); // coordinate along u 
+            float t = Vector3.Dot(r, _vAxis); // coordinate along v
+            return new Vector2(s, t);
+        }
+
+        Vector2 GetHomographyCoordinates(Vector3 point)
+        {
+            var projectedPoint = GetProjectionToPlane(point);
+            var point2D = ProjectPlanePointToUV(projectedPoint);
+            Point2f projected2D = new(point2D.X, point2D.Y);
+            Point2f[] mapped = Cv2.PerspectiveTransform(new[] { projected2D }, _homography);
+            return new(mapped[0].X, mapped[0].Y);
+        }
+
     }
 
 }

@@ -18,4 +18,17 @@ namespace CPRTouchVision.Models
         }
 
     }
+
+    public class DbscanCustom2DPoint
+    {
+        public double[] Point { get; set; }  // 2D point: [x, y]
+        public bool Visited { get; set; } = false;
+        public int? ClusterId { get; set; } = null;
+
+        public DbscanCustom2DPoint(double x, double y)
+        {
+            Point = new[] { x, y };
+        }
+
+    }
 }

@@ -67,4 +67,62 @@ namespace CPRTouchVision.Models
             return Math.Sqrt(dx * dx + dy * dy + dz * dz);
         }
     }
+    public class Spatial2DGridIndex
+    {
+        private readonly double _cellSize;
+        private readonly Dictionary<(int, int), List<DbscanCustom2DPoint>> _grid = new();
+
+        public Spatial2DGridIndex(IEnumerable<DbscanCustom2DPoint> points, double cellSize)
+        {
+            _cellSize = cellSize;
+
+            foreach (var p in points)
+            {
+                var key = GetKey(p.Point);
+                if (!_grid.TryGetValue(key, out var list))
+                {
+                    list = new List<DbscanCustom2DPoint>();
+                    _grid[key] = list;
+                }
+                list.Add(p);
+            }
+        }
+
+        public List<DbscanCustom2DPoint> GetNeighbors(DbscanCustom2DPoint point, double eps)
+        {
+            var key = GetKey(point.Point);
+            var neighbors = new List<DbscanCustom2DPoint>();
+
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    var neighborKey = (key.Item1 + dx, key.Item2 + dy);
+                    if (_grid.TryGetValue(neighborKey, out var cellPoints))
+                    {
+                        foreach (var p in cellPoints)
+                        {
+                            if (Distance(point.Point, p.Point) <= eps)
+                                neighbors.Add(p);
+                        }
+                    }
+                }
+
+            return neighbors;
+        }
+
+        private (int, int) GetKey(double[] point)
+        {
+            return (
+                (int)Math.Floor(point[0] / _cellSize),
+                (int)Math.Floor(point[1] / _cellSize)
+            );
+        }
+
+        private double Distance(double[] a, double[] b)
+        {
+            double dx = a[0] - b[0];
+            double dy = a[1] - b[1];
+            return Math.Sqrt(dx * dx + dy * dy);
+        }
+    }
 }

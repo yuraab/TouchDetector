@@ -96,4 +96,94 @@ namespace CPRTouchVision.Models
         }
     }
 
+    public class Dbscan2DCustom
+    {
+        private readonly double _eps;
+        private readonly int _minPts;
+        private readonly object _lock = new();
+
+        public Dbscan2DCustom(double eps, int minPts)
+        {
+            _eps = eps;
+            _minPts = minPts;
+        }
+
+        public List<List<DbscanCustom2DPoint>> Fit(List<DbscanCustom2DPoint> points)
+        {
+            int clusterId = 0;
+            var clusters = new ConcurrentBag<List<DbscanCustom2DPoint>>();
+            var index = new Spatial2DGridIndex(points, _eps);
+            var visited = new ConcurrentDictionary<DbscanCustom2DPoint, byte>();
+
+            Parallel.ForEach(points, point =>
+            {
+                if (visited.ContainsKey(point))
+                    return;
+
+                lock (point)
+                {
+                    if (!visited.TryAdd(point, 0))
+                        return;
+
+                    var neighbors = index.GetNeighbors(point, _eps);
+                    if (neighbors.Count < _minPts)
+                    {
+                        point.ClusterId = -1; // noise
+                        return;
+                    }
+
+                    var cluster = new List<DbscanCustom2DPoint>();
+                    int assignedClusterId;
+
+                    lock (_lock)
+                    {
+                        assignedClusterId = clusterId++;
+                    }
+
+                    ExpandCluster(point, neighbors, cluster, assignedClusterId, index, visited);
+                    clusters.Add(cluster);
+                }
+            });
+
+            return clusters.ToList();
+        }
+
+        private void ExpandCluster(
+            DbscanCustom2DPoint point,
+            List<DbscanCustom2DPoint> neighbors,
+            List<DbscanCustom2DPoint> cluster,
+            int clusterId,
+            Spatial2DGridIndex index,
+            ConcurrentDictionary<DbscanCustom2DPoint, byte> visited)
+        {
+            point.ClusterId = clusterId;
+            cluster.Add(point);
+
+            var neighborQueue = new Queue<DbscanCustom2DPoint>(neighbors);
+
+            while (neighborQueue.Count > 0)
+            {
+                var current = neighborQueue.Dequeue();
+
+                if (!visited.ContainsKey(current))
+                {
+                    visited.TryAdd(current, 0);
+                    var currentNeighbors = index.GetNeighbors(current, _eps);
+                    if (currentNeighbors.Count >= _minPts)
+                    {
+                        foreach (var n in currentNeighbors)
+                            neighborQueue.Enqueue(n);
+                    }
+                }
+
+                if (current.ClusterId == null || current.ClusterId == -1)
+                {
+                    current.ClusterId = clusterId;
+                    cluster.Add(current);
+                }
+            }
+        }
+    }
+
+
 }

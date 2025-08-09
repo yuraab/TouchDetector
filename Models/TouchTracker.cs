@@ -15,6 +15,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using OB = OBSharp;
 
 namespace CPRTouchVision.Models
 {
@@ -186,6 +187,8 @@ namespace CPRTouchVision.Models
                 App.Log($"[TouchTracker] Filtered points count: {points.Count}");
                 _isCountPointsDisplayed = false;
             }
+            //else
+                //App.Log($"[TouchTracker] Filtered points count: {points.Count}");
 
             stopwatch = Stopwatch.StartNew();
 #endif
@@ -206,9 +209,9 @@ namespace CPRTouchVision.Models
             }
         }
 
-        private List<Vector3> Extract3DPointsInsideVolume(ushort[] depthImage, CalibrationGeometry calibrationGeometry)
+        private List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage, CalibrationGeometry calibrationGeometry)
         {
-            return _volume.Extract3DPointsInsideVolume(depthImage, calibrationGeometry);
+            return _volume.Extract3DPointsInsideVolume(depthImage);
         }
 
         public void Stop()

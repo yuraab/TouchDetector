@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Timers;
-
+using OB = OBSharp;
 
 namespace CPRTouchVision.Models
 {
@@ -99,7 +99,7 @@ namespace CPRTouchVision.Models
         }
 
 
-        public List<TouchCluster> DetectClusters(List<Vector3> points, DateTime timestamp)
+        public List<TouchCluster> DetectClusters(List<OB.Float3> points, DateTime timestamp)
         {
             // Step 1: Convert input points to DbscanCustomPoint list
             var dbscanPoints = points.Select(p => new DbscanCustomPoint(p.X, p.Y, p.Z)).ToList();
@@ -373,7 +373,161 @@ namespace CPRTouchVision.Models
             }
             return Math.Sqrt(sum);
         }
+    }
 
+    public class Touch2DCluster
+    {
+        private List<Vector2> _points;
+        private Vector2 _center;
+        private float _radius;
+        private int _pointsCount;
+        private DateTime _timestamp;
+
+        public Vector2 Center => _center;        // 3D center point of the cluster
+        public float Radius => _radius;          // Max radius from center
+        public int Count => _pointsCount;
+        public List<Vector2> Points => _points;
+
+
+
+        public Touch2DCluster(List<Vector2> points)
+        {
+
+            _points = points;
+            if (points == null || points.Count == 0)
+            {
+                _center = Vector2.Zero;
+                _radius = 0f;
+            }
+            else
+            {
+                _center = CalculateCenter(points);
+                _radius = CalculateRadius(points, Center);
+                _pointsCount = points.Count;
+            }
+
+        }
+
+        private Vector2 CalculateCenter(List<Vector2> points)
+        {
+            if (points.Count == 0) return Vector2.Zero;
+            Vector2 sum = Vector2.Zero;
+            foreach (var p in points)
+                sum += p;
+            return sum / points.Count;
+        }
+
+        private float CalculateRadius(List<Vector2> points, Vector2 center)
+        {
+            float maxDist = 0f;
+            foreach (var p in points)
+            {
+                var dist = Vector2.Distance(p, center);
+                if (dist > maxDist)
+                    maxDist = dist;
+            }
+            return maxDist;
+        }
+
+        public override string ToString()
+        {
+
+            return $"TouchCluster(Center: {Center}, Radius: {Radius:F2})";
+        }
+    }
+
+    public class Touch2DClusterManager
+    {
+        private readonly double _eps;
+        private readonly int _minPoints;
+        private readonly int _minRadius;
+        private readonly int _rateLimitMs;
+        private DateTime _lastSentTime = DateTime.MinValue;
+
+        // Optional: noise suppression (per cluster location)
+        private readonly List<Vector3> _recentCenters = new();
+        private readonly float _minClusterDistance = 10; // millimeters
+        private readonly float _mergeThreshold = 0.9f; // Relative to radius sum
+
+        public int MinPoints => _minPoints;
+
+        public Touch2DClusterManager(double eps = 40, int minPoints = 10, int minRadius = 25, int rateLimitMs = 100)
+        {
+            _eps = eps;
+            _minPoints = minPoints;
+            _minRadius = minRadius;
+            _rateLimitMs = rateLimitMs;
+        }
+
+
+        public List<Touch2DCluster> DetectClusters(List<OB.Float2> points)
+        {
+            // Step 1: Convert input points to DbscanCustomPoint list
+            var dbscanPoints = points.Select(p => new DbscanCustom2DPoint(p.X, p.Y)).ToList();
+
+            // Step 2: Create DBSCAN instance with current parameters
+            var dbscan = new Dbscan2DCustom(_eps, _minPoints);
+
+            // Step 3: Run DBSCAN clustering
+            var clusters = dbscan.Fit(dbscanPoints);
+
+            // Step 4: Convert clusters to your custom TouchCluster class
+            var initial = new List<Touch2DCluster>();
+
+            foreach (var cluster in clusters)
+            {
+                if (cluster.Count < _minPoints)
+                    continue;
+
+                var touchCluster = new Touch2DCluster(
+                    cluster.Select(p => new Vector2((float)p.Point[0], (float)p.Point[1])).ToList()
+                );
+
+                initial.Add(touchCluster);
+
+            }
+
+            return MergeClusters(initial);
+        }
+
+        private List<Touch2DCluster> MergeClusters(List<Touch2DCluster> clusters)
+        {
+            bool[] merged = new bool[clusters.Count];
+            List<Touch2DCluster> result = new();
+
+            for (int i = 0; i < clusters.Count; i++)
+            {
+                if (merged[i]) continue;
+
+                var baseCluster = clusters[i];
+                List<Touch2DCluster> toMerge = new() { baseCluster };
+                merged[i] = true;
+
+                for (int j = i + 1; j < clusters.Count; j++)
+                {
+                    if (merged[j]) continue;
+
+                    var other = clusters[j];
+                    float dist = (baseCluster.Center - other.Center).Length();
+                    float combinedRadius = baseCluster.Radius + other.Radius;
+
+                    if (dist < combinedRadius * _mergeThreshold)
+                    {
+                        toMerge.Add(other);
+                        merged[j] = true;
+                    }
+                }
+
+                result.Add(MergeGroup(toMerge));
+            }
+
+            return result;
+        }
+        private Touch2DCluster MergeGroup(List<Touch2DCluster> group)
+        {
+            var allPoints = group.SelectMany(g => g.Points).ToList();
+            return new Touch2DCluster(allPoints);
+        }
 
     }
 }
