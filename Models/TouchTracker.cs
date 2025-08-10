@@ -176,7 +176,7 @@ namespace CPRTouchVision.Models
             var stopwatch = Stopwatch.StartNew();
 #endif
 
-            var points = Extract3DPointsInsideVolume(image, _calibrationGeometry);
+            var points = Extract3DPointsInsideVolume(image);
 
 #if DEBUG
             stopwatch.Stop();
@@ -204,16 +204,23 @@ namespace CPRTouchVision.Models
 
             if (clusters?.Count > 0)
             {
+                foreach (var cluster in clusters)
+                {
+                    cluster.NormalizedCenter = _volume.GetHomographyCoordinatesFrom3D(cluster.Center);
+                }
                 var frame = new TouchFrame(clusters);
                 TouchFrameReady?.Invoke(this, frame);
             }
         }
 
-        private List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage, CalibrationGeometry calibrationGeometry)
+        private List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage)
         {
             return _volume.Extract3DPointsInsideVolume(depthImage);
         }
-
+        private List<OB.Float2> Extract2DPointsInsideVolume(ushort[] depthImage)
+        {
+            return _volume.ExtractProjectedPointsInsideVolume(depthImage);
+        }
         public void Stop()
         {
             _isRunning = false;

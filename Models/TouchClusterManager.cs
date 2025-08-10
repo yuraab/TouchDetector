@@ -11,11 +11,13 @@ namespace CPRTouchVision.Models
     {
         private List<Vector3> _points;
         private Vector3 _center;
+        private Vector2 _normalizedCenter;
         private float _radius;
         private int _pointsCount;
         private DateTime _timestamp;
-
+        
         public Vector3 Center => _center;        // 3D center point of the cluster
+        public Vector2 NormalizedCenter { get { return _normalizedCenter; } set { _normalizedCenter = value; } }
         public float Radius => _radius;          // Max radius from center
         public int Count => _pointsCount;
         public List<Vector3> Points => _points;
@@ -44,7 +46,7 @@ namespace CPRTouchVision.Models
                 _pointsCount = points.Count;
             }
 
-            _timestamp = timestamp ?? DateTime.UtcNow;
+            //_timestamp = timestamp ?? DateTime.UtcNow;
         }
 
         private Vector3 CalculateCenter(List<Vector3> points)
@@ -71,7 +73,7 @@ namespace CPRTouchVision.Models
         public override string ToString()
         {
 
-            return $"TouchCluster(Center: {Center}, Radius: {Radius:F2}, Timestamp: {_timestamp})";
+            return $"TouchCluster(Center: {Center}, Radius: {Radius:F2})";
         }
     }
 
@@ -90,7 +92,7 @@ namespace CPRTouchVision.Models
 
         public int MinPoints => _minPoints;
 
-        public TouchClusterManager(double eps = 40, int minPoints = 10, int minRadius = 25, int rateLimitMs = 100)
+        public TouchClusterManager(double eps = 25, int minPoints = 6, int minRadius = 10, int rateLimitMs = 100)
         {
             _eps = eps;
             _minPoints = minPoints;

@@ -317,20 +317,28 @@ namespace CPRTouchVision.Models
             {
                 var center = _calibration.Convert3DTo2D(new(c.Center.X, c.Center.Y, c.Center.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
                 if (center == null) continue;
+                if (c.NormalizedCenter.X < 0 || c.NormalizedCenter.X > 1) continue;
+                if (c.NormalizedCenter.Y < 0 || c.NormalizedCenter.Y > 1) continue;
                 touches.Add(new TouchEvent
                 {
                     Id = idCounter++,
                     X = center.Value.X,
                     Y = center.Value.Y,
+                    NormalizedX = c.NormalizedCenter.X,
+                    NormalizedY = c.NormalizedCenter.Y,
+                    GameScreenX = (ushort) (c.NormalizedCenter.X * GameScreenWidth),
+                    GameScreenY = (ushort) (c.NormalizedCenter.Y * GameScreenHeight),
                     Radius = c.Radius,
-                    Timestamp = c.Timestamp
+                    //Timestamp = c.Timestamp
                 });
+
+
             }
 
             Task.Run(() => _oscClient.Send(touches));
 
             string message = $"Total: {touches.Count}; " + string.Join("; ", touches.Select(t =>
-            $"[id:{t.Id} center:({t.X:F2},{t.Y:F2}) r:{t.Radius:F2} ts:{t.Timestamp}]"));
+            $"[id:{t.Id} center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY}) Game Screen Center:({t.GameScreenX}:{t.GameScreenY}) r:{t.Radius:F2}]"));
             App.Log(message);
 
 
@@ -727,6 +735,7 @@ namespace CPRTouchVision.Models
 
             if (_touchZonePoints.Count == TouchZonePointsCount)
             {
+                _touchZonePoints = CornerPointsSorter(_touchZonePoints);
                 IsSelectingTouchZone = false;
                 IsTouchZoneSet = true;
                 IsFittingPlane = false;
@@ -734,24 +743,24 @@ namespace CPRTouchVision.Models
                 await SaveConfig();
                 CheckIsReadyRunTouchLoop();
             }
-           /*
-            if (_touchZoneCorner1.IsEmpty)
-            {
-                _touchZoneCorner1 = projectedPoint;
-            }
-            else
-            {
-                _touchZoneCorner2 = projectedPoint;
 
-                IsSelectingTouchZone = false;
-                IsTouchZoneSet = true;
-                IsFittingPlane = false;
-
-                await SaveConfig();
-                CheckIsReadyRunTouchLoop();
-            }
-            */
         }
+
+        private List<DepthPoint> CornerPointsSorter(List<DepthPoint> points)
+        {
+            if (points.Count != 4)
+                throw new System.ArgumentException($"Touch zone points should be 4. Actual count {_touchZonePoints.Count}");
+            var sorted = points.OrderBy(p => p.SY).ThenBy(p => p.SX).ToList();
+            // First two are top points, sort them left-to-right
+            var topLeft = sorted[0];
+            var topRight = sorted[1];
+
+            // Last two are bottom points, sort them left-to-right
+            var bottomLeft = sorted[2];
+            var bottomRight = sorted[3];
+            return new List<DepthPoint> { topLeft, topRight, bottomRight, bottomLeft };
+        }
+
         private List<Vector3> ScalePoints(List<Vector3> originalPoints, int fromWidth, int fromHeight, int toWidth, int toHeight)
         {
             float scaleX = (float)toWidth / fromWidth;

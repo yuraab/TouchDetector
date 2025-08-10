@@ -1,4 +1,5 @@
-﻿using OBSharp.Sensor;
+﻿using OBSharp;
+using OBSharp.Sensor;
 using OpenCvSharp;
 using System;
 using System.Collections.Concurrent;
@@ -649,7 +650,7 @@ namespace CPRTouchVision.Models
             var distanceToPlane = Vector3.Dot(WallNormal, point) + WallDistance;
             return point - WallNormal * distanceToPlane;
         }
-        Vector2 ProjectPlanePointToUV(Vector3 P)
+        private Vector2 ProjectPlanePointToUV(Vector3 P)
         {
             Vector3 r = P - _origin;
             float s = Vector3.Dot(r, _uAxis); // coordinate along u 
@@ -657,7 +658,7 @@ namespace CPRTouchVision.Models
             return new Vector2(s, t);
         }
 
-        Vector2 GetHomographyCoordinates(Vector3 point)
+        public Vector2 GetHomographyCoordinatesFrom3D(Vector3 point)
         {
             var projectedPoint = GetProjectionToPlane(point);
             var point2D = ProjectPlanePointToUV(projectedPoint);
@@ -666,6 +667,18 @@ namespace CPRTouchVision.Models
             return new(mapped[0].X, mapped[0].Y);
         }
 
+        public List<Float2> ExtractProjectedPointsInsideVolume(ushort[] depthImage)
+        {
+            var points3D = Extract3DPointsInsideVolume(depthImage);
+            List<Float2> points2D = new List<Float2>();
+            foreach (var point3D in points3D)
+            {
+                var pointOnPlane = GetProjectionToPlane(point3D.ToVector3());
+                var point = ProjectPlanePointToUV(pointOnPlane);
+                points2D.Add(new(point.X, point.Y));
+            }
+            return points2D;
+        }
     }
 
 }
