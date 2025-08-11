@@ -397,7 +397,7 @@ namespace CPRTouchVision.Models
         private Vector3 _uAxis, _vAxis;
         private Vector3 planePolygonNormal;
         private Mat _homography;
-        private OB.Float3 _uF3, _vF3;
+        private Float3 _uF3, _vF3;
         private float _uu, _vv, _uv, _denom;
 
         private Vector3 _axisU, _axisV; // local axises on the wall
@@ -405,7 +405,7 @@ namespace CPRTouchVision.Models
         private int _minSX, _maxSX, _minSY, _maxSY;
         private ushort _minD, _maxD;
 
-        public Func<OB.Float3, bool> IsProjectedPointInVolume;
+        public Func<Float3, bool> IsProjectedPointInVolume;
         private float _triangleArea012;
         private readonly float _triangleArea023;
 
@@ -414,7 +414,7 @@ namespace CPRTouchVision.Models
         private readonly object _depthLock = new();
         private readonly Calibration _calibration;
         private readonly int _fw, _fh;
-        int counter = 0;
+        //int counter = 0;
         public TouchVolume(
             Vector3 planeNormal,
             float PlaneDistance,
@@ -429,7 +429,7 @@ namespace CPRTouchVision.Models
             if (polygon == null || polygon.Length != 4)
                 WallNotAligned?.Invoke();
 
-            counter = 0;
+            //counter = 0;
 
             Polygon = polygon;
             Polygon2D = new Vector2[4];
@@ -568,7 +568,7 @@ namespace CPRTouchVision.Models
             if (distanceToPlane > MaxOffset || distanceToPlane < MinOffset)
                 return false;
 
-            counter++;
+            //counter++;
 
             // Get 3D projected point
             Vector3 projected = new Vector3(
@@ -726,6 +726,7 @@ namespace CPRTouchVision.Models
         {
             return _origin + _uAxis * point.X + _vAxis * point.Y;
         }
+
         /*
         public List<Float2> ExtractProjectedPointsInsideVolume(ushort[] depthImage)
         {

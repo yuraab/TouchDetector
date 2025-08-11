@@ -126,6 +126,9 @@ namespace CPRTouchVision.Models
         private List<Vector3> _calibrationPoints = new();
         private List<DepthPoint> _touchZonePoints = new();
 
+        private List<TouchEvent> _touches = new();
+        public List<TouchEvent> Touches => _touches;
+
         private float _planeD = float.MinValue;
         private Vector3 _planeNormal = Vector3.Zero;
         private Vector3 _cameraPosition = Vector3.Zero;
@@ -286,33 +289,40 @@ namespace CPRTouchVision.Models
 
         private void OnTouchFrameReady(object? sender, TouchFrame e)
         {
-
-            List<TouchEvent> touches = new();
             int idCounter = 0;
 
             if (e.Clusters == null || e.Clusters.Count == 0) return;
-
+            _touches.Clear();
+            var time = DateTime.UtcNow;
             foreach (var c in e.Clusters) 
             {
-                OBSharp.Float2 center = new OBSharp.Float2(0,0);
-                if (c.Center3D != Vector3.Zero)
-                {
-                    var center2D = _calibration.Convert3DTo2D(new(c.Center3D.X, c.Center3D.Y, c.Center3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-                    if (center2D.HasValue) center = center2D.Value;
-                }
-
                 if (c.NormalizedCenter.X < 0 || c.NormalizedCenter.X > 1) continue;
                 if (c.NormalizedCenter.Y < 0 || c.NormalizedCenter.Y > 1) continue;
-                touches.Add(new TouchEvent
+                OBSharp.Float2 center = new OBSharp.Float2(0,0);
+                if (c.Center3D == Vector3.Zero)
+                {
+                    c.Center3D = _detectableSpace.Get3DPointFromLocal2DPoint(c.Center);
+                }
+
+                var center2D = _calibration.Convert3DTo2D(new(c.Center3D.X, c.Center3D.Y, c.Center3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+                center = (center2D.HasValue) ? center2D.Value : new OBSharp.Float2(0,0);
+
+                var right = GetScreenPointFromPlanePoint(new (c.Center.X + c.Radius, c.Center.Y)); // right
+                var left =  GetScreenPointFromPlanePoint(new (c.Center.X - c.Radius, c.Center.Y)); // left
+                var down =  GetScreenPointFromPlanePoint(new (c.Center.X, c.Center.Y + c.Radius)); // up
+                var up =    GetScreenPointFromPlanePoint(new (c.Center.X, c.Center.Y - c.Radius)); // down
+
+
+                _touches.Add(new TouchEvent
                 {
                     Id = idCounter++,
                     X = center.X,
                     Y = center.Y,
                     NormalizedX = c.NormalizedCenter.X,
                     NormalizedY = c.NormalizedCenter.Y,
-                    GameScreenX = c.NormalizedCenter.X * GameScreenWidth,
-                    GameScreenY = c.NormalizedCenter.Y * GameScreenHeight,
+                    ScreenRadius = (Vector2.Distance(right, left) + Vector2.Distance(up, right)) / 2f,
                     Radius = c.Radius,
+                    Timestamp = time
                 });
 #if DEBUG
                 var t = touches.Last();
@@ -322,11 +332,16 @@ namespace CPRTouchVision.Models
 
             }
 
-            Task.Run(() => _oscClient.Send(touches));
+            Task.Run(() => _oscClient.Send(_touches));
 
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
         }
-
+         private Vector2 GetScreenPointFromPlanePoint(OBSharp.Float2 point)
+        {
+            var point3D = _detectableSpace.Get3DPointFromLocal2DPoint(new (point.X, point.Y));
+            var p = _calibration.Convert3DTo2D(new(point3D.X, point3D.Y, point3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+            return p.HasValue ? new (p.Value.X, p.Value.Y) : new Vector2(0,0);
+        }
         private void OnLoopFailed(object? sender, LoopFailedEventArgs e)
         {
             App.Log("Capture loop failed");

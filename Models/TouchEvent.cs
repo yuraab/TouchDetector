@@ -12,11 +12,11 @@ namespace CPRTouchVision.Models
         public float Y { get; set; }
         public float NormalizedX { get; set; }
         public float NormalizedY { get; set; }
-        public float GameScreenX { get; set; }
-        public float GameScreenY { get; set; }
         public int Id { get; set; }
         public float Radius { get; set; }
-        //public DateTime Timestamp { get; set; }
+        public float ScreenRadius { get; internal set; }
+
+        public DateTime? Timestamp { get; set; }
 
         public override string ToString()
         {

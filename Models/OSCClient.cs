@@ -29,7 +29,8 @@ namespace CPRTouchVision.Models
         public void Send(List<TouchEvent> touches) 
         {
             var aliveMessage = new OscMessage(endPoint, "alive");
-            var setBundle = new OscBundle(OscTimeHelper.ToNTPTimestamp(DateTime.UtcNow));
+            var time = touches[0].Timestamp?? DateTime.UtcNow;
+            var setBundle = new OscBundle(OscTimeHelper.ToNTPTimestamp(time));
             var fseqMessage = new OscMessage(endPoint, "fseq", -1);
 
             for (int i = 0; i < touches.Count; i++)

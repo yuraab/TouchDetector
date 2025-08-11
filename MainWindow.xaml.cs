@@ -7,6 +7,8 @@ using Microsoft.UI.Xaml.Input;
 //using OBSharp.Sensor;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
+using System;
+
 //using System;
 //using System.Diagnostics.Metrics;
 using System.Linq;
@@ -27,6 +29,7 @@ namespace CPRTouchVision
         private TouchManager _manager = new();
         private float _cw = 1.0f;
         private float _ch = 1.0f;
+        private readonly TimeSpan touchDisplayTime = TimeSpan.FromSeconds(2);
 
 #if DEBUG
         private bool _singleOutPutDone = false;
@@ -89,6 +92,28 @@ namespace CPRTouchVision
             }
             else if (_manager.IsCalibrating || _manager.IsSelectingTouchZone)
                 DrawCursor(canvas);
+            else if (_manager.Touches.Count > 0 && DateTime.UtcNow < _manager.Touches[0].Timestamp + touchDisplayTime)
+                DrawTouches(canvas);
+        }
+
+        private void DrawTouches(SKCanvas canvas)
+        {
+            using var paint = new SKPaint
+            {
+                Color = SKColors.Red.WithAlpha(200),
+                IsAntialias = true,
+                Style = SKPaintStyle.Fill,
+                StrokeWidth = 3
+            };
+
+            foreach (var touch in _manager.Touches)
+            {
+                // Map normalized coords (0..1) to canvas size
+                //float cx = (float)(touch.X * _cw);
+                //float cy = (float)(touch.Y * _ch);
+
+                canvas.DrawCircle(touch.X, touch.Y, touch.ScreenRadius, paint);
+            }
         }
 
         private void DrawCalibration(SKCanvas canvas)
