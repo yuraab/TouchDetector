@@ -1,9 +1,9 @@
 ﻿using SharpOSC;
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Linq;
-using System.Net;
+//using System.Collections.Specialized;
+//using System.Linq;
+//using System.Net;
 
 namespace CPRTouchVision.Models
 {
@@ -11,13 +11,9 @@ namespace CPRTouchVision.Models
     {
 
         private int _id = 0;
-        //private string endPoint = "/cpr/body";
         private string endPoint = "/tuio/2Dcur";
-
         public EventHandler<List<TouchEvent>>? Sent;
-
         private UDPSender _sender;
-
 
         public OSCClient(string ip = "127.0.0.1", int port = 3333)
         {
@@ -40,7 +36,7 @@ namespace CPRTouchVision.Models
             {
                 var touch = touches[i];
                 aliveMessage.Arguments.Add(_id);
-                setBundle.Messages.Add(new OscMessage(endPoint, "set", _id, touch.GameScreenX, touch.GameScreenX, 0.0f, 0.0f, 0.0f));
+                setBundle.Messages.Add(new OscMessage(endPoint, "set", _id, touch.NormalizedX, touch.NormalizedY, 0.0f, 0.0f, 0.0f));
                 if(_id == int.MaxValue)
                 {
                     _id = 0;
@@ -54,17 +50,6 @@ namespace CPRTouchVision.Models
             _sender.Send(setBundle);
             _sender.Send(fseqMessage);
             Sent?.Invoke(this, touches);
-            /*
-            // Build one string that includes total count and all touch data
-            string payload = $"count:{touches.Count};" + string.Join(";", touches.Select(t =>
-                $"id:{t.Id},x:{t.X:F2},y:{t.Y:F2},r:{t.Radius:F2},timestamp:{t.Timestamp.Ticks}"));
-
-            // Convert string to bytes
-            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(payload);
-
-            // Send as individual OSC message per touch
-            _sender.Send(new OscMessage("/cpr/touch", bytes));
-            */
         }
     }
 
