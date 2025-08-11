@@ -40,7 +40,7 @@ namespace CPRTouchVision.Models
             {
                 var touch = touches[i];
                 aliveMessage.Arguments.Add(_id);
-                setBundle.Messages.Add(new OscMessage(endPoint, "set", _id, (int)touch.GameScreenX, (int)touch.GameScreenX, 0.0f, 0.0f, 0.0f));
+                setBundle.Messages.Add(new OscMessage(endPoint, "set", _id, touch.GameScreenX, touch.GameScreenX, 0.0f, 0.0f, 0.0f));
                 if(_id == int.MaxValue)
                 {
                     _id = 0;

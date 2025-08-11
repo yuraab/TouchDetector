@@ -417,7 +417,7 @@ namespace CPRTouchVision.Models
         int counter = 0;
         public TouchVolume(
             Vector3 planeNormal,
-            float PlaneDistance, 
+            float PlaneDistance,
             float minOffset,
             float maxOffset,
             DepthPoint[] polygon,
@@ -432,7 +432,7 @@ namespace CPRTouchVision.Models
             counter = 0;
 
             Polygon = polygon;
-            Polygon2D =  new Vector2[4];
+            Polygon2D = new Vector2[4];
             MinOffset = minOffset;
             MaxOffset = maxOffset;
             _minD = minWalDepth > maxOffset ? (ushort)(minWalDepth - maxOffset) : ushort.MinValue;
@@ -448,7 +448,7 @@ namespace CPRTouchVision.Models
             _origin = Polygon[0].World;
             _uAxis = Vector3.Normalize(Polygon[1].World - Polygon[0].World); // horizontal-ish
             _uF3 = new(_uAxis.X, _uAxis.Y, _uAxis.Z);
-            var diag = Polygon[3].World - Polygon[0].World; 
+            var diag = Polygon[3].World - Polygon[0].World;
             var diagProjectedOnU = _uAxis * Vector3.Dot(diag, _uAxis);
             _vAxis = Vector3.Normalize(diag - diagProjectedOnU); // vertical-ish
             _vF3 = new(_vAxis.X, _vAxis.Y, _vAxis.Z);
@@ -496,7 +496,7 @@ namespace CPRTouchVision.Models
             // Precompute screen/depth bounds for scan restriction
             _minSX = _fw; _maxSX = 0;
             _minSY = _fh; _maxSY = 0;
-          
+
 
             UpdateScreenMinMax(Polygon, minOffset);
             UpdateScreenMinMax(Polygon, maxOffset);
@@ -518,6 +518,13 @@ namespace CPRTouchVision.Models
                 new Point2f(src2.X, src2.Y),
                 new Point2f(src3.X, src3.Y)
             };
+#if DEBUG
+            App.Log($"Projected points in the local coordinates");
+            App.Log($"Top Left => {src0.X}:{src0.Y}");
+            App.Log($"Top Right => {src1.X}:{src1.Y}");
+            App.Log($"Bottom Right => {src2.X}:{src2.Y}");
+            App.Log($"Bottom Left => {src3.X}:{src3.Y}");
+#endif
             Point2f[] dstPts = new[] {
                 new Point2f(0f, 0f),
                 new Point2f(1f, 0f),
@@ -550,14 +557,15 @@ namespace CPRTouchVision.Models
             }
         }
 
-        public bool IsPointInVolume(OB.Float3 point)
+        public bool IsPointInVolume(OB.Float3 point, out Vector2? point2D)
         {
+            point2D = new Vector2?();
             float distanceToPlane = WallNormal.X * point.X
                        + WallNormal.Y * point.Y
                        + WallNormal.Z * point.Z
-                       + WallDistance; 
+                       + WallDistance;
 
-            if (distanceToPlane > MaxOffset || distanceToPlane < MinOffset) 
+            if (distanceToPlane > MaxOffset || distanceToPlane < MinOffset)
                 return false;
 
             counter++;
@@ -574,10 +582,10 @@ namespace CPRTouchVision.Models
             float x = Vector3.Dot(projected, _uAxis);
             float y = Vector3.Dot(projected, _vAxis);
 
-            var point2D = new Vector2(x, y);
+            point2D = new Vector2(x, y);
 
-            return PointInTriangle(point2D, Polygon2D[0], Polygon2D[1], Polygon2D[2], _triangleArea012) ||
-                   PointInTriangle(point2D, Polygon2D[0], Polygon2D[2], Polygon2D[3], _triangleArea023);
+            return PointInTriangle(point2D!.Value, Polygon2D[0], Polygon2D[1], Polygon2D[2], _triangleArea012) ||
+                   PointInTriangle(point2D!.Value, Polygon2D[0], Polygon2D[2], Polygon2D[3], _triangleArea023);
         }
 
 
@@ -633,8 +641,51 @@ namespace CPRTouchVision.Models
                                 var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
                                 if (world == null) continue;
 
-                                if (IsPointInVolume(world.Value))
+                                var point2D = new Vector2?();
+                                if (IsPointInVolume(world.Value, out point2D))
                                     localList.Add(world.Value);
+
+                            }
+                        }
+                        return localList;
+                    },
+                    localList => { lock (result) result.AddRange(localList); });
+            }
+
+            return result;
+        }
+        public List<Float2> ExtractProjectedPointsInsideVolume(ushort[] depthImage)
+        {
+            var result = new List<OB.Float2>();
+            int step = 2;
+            lock (_depthLock)
+            {
+                var localLists = new List<OB.Float2>[Environment.ProcessorCount];
+                Parallel.For(0, localLists.Length, i => localLists[i] = new List<OB.Float2>());
+
+                Parallel.ForEach(
+                    Partitioner.Create(_minSY, _maxSY),
+                    new ParallelOptions { MaxDegreeOfParallelism = localLists.Length },
+                    () => new List<OB.Float2>(),
+                    (range, _, localList) =>
+                    {
+                        for (int y = range.Item1; y < range.Item2; y++)
+                        {
+                            if ((y - _minSY) % step != 0) continue;
+
+                            for (int x = _minSX; x < _maxSX; x += step)
+                            {
+                                int index = y * _fw + x;
+                                float d = depthImage[index];
+
+                                if (d <= 0 || d < _minD || d > _maxD) continue;
+
+                                var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
+                                if (world == null) continue;
+
+                                var point2D = new Vector2?();
+                                if (IsPointInVolume(world.Value, out point2D) && point2D != null)
+                                    localList.Add(new (point2D.Value.X, point2D.Value.Y));
 
                             }
                         }
@@ -662,11 +713,20 @@ namespace CPRTouchVision.Models
         {
             var projectedPoint = GetProjectionToPlane(point);
             var point2D = ProjectPlanePointToUV(projectedPoint);
+            return GetHomographyCoordinatesFrom2D(point2D);
+        }
+        public Vector2 GetHomographyCoordinatesFrom2D(Vector2 point2D)
+        {
             Point2f projected2D = new(point2D.X, point2D.Y);
             Point2f[] mapped = Cv2.PerspectiveTransform(new[] { projected2D }, _homography);
             return new(mapped[0].X, mapped[0].Y);
         }
 
+        public Vector3 Get3DPointFromLocal2DPoint(Vector2 point)
+        {
+            return _origin + _uAxis * point.X + _vAxis * point.Y;
+        }
+        /*
         public List<Float2> ExtractProjectedPointsInsideVolume(ushort[] depthImage)
         {
             var points3D = Extract3DPointsInsideVolume(depthImage);
@@ -679,6 +739,7 @@ namespace CPRTouchVision.Models
             }
             return points2D;
         }
+        */
     }
 
 }

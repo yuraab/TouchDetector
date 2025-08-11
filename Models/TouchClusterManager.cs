@@ -381,50 +381,52 @@ namespace CPRTouchVision.Models
     {
         private List<Vector2> _points;
         private Vector2 _center;
+        private Vector3 _center3D;
+        public Vector2 _normalizedCenter;
         private float _radius;
-        private int _pointsCount;
-        private DateTime _timestamp;
 
-        public Vector2 Center => _center;        // 3D center point of the cluster
+        public Vector2 Center => _center;        // 2D center point of the cluster
+                // 2D center point of the cluster
+
         public float Radius => _radius;          // Max radius from center
-        public int Count => _pointsCount;
+        public int Count => _points.Count;
         public List<Vector2> Points => _points;
 
-
-
+        public Vector2 NormalizedCenter { get { return _normalizedCenter; } set { _normalizedCenter = value; } }
+        public Vector3 Center3D { get { return _center3D; } set { _center3D = value; } }
         public Touch2DCluster(List<Vector2> points)
         {
-
+            _center3D = Vector3.Zero; // this is calculated out of this class
             _points = points;
             if (points == null || points.Count == 0)
             {
                 _center = Vector2.Zero;
+                _normalizedCenter = Vector2.Zero;
                 _radius = 0f;
             }
             else
             {
-                _center = CalculateCenter(points);
-                _radius = CalculateRadius(points, Center);
-                _pointsCount = points.Count;
+                _center = CalculateCenter();
+                _radius = CalculateRadius();
             }
 
         }
 
-        private Vector2 CalculateCenter(List<Vector2> points)
+        private Vector2 CalculateCenter()
         {
-            if (points.Count == 0) return Vector2.Zero;
+            if (_points.Count == 0) return Vector2.Zero;
             Vector2 sum = Vector2.Zero;
-            foreach (var p in points)
+            foreach (var p in _points)
                 sum += p;
-            return sum / points.Count;
+            return sum / _points.Count;
         }
 
-        private float CalculateRadius(List<Vector2> points, Vector2 center)
+        private float CalculateRadius()
         {
             float maxDist = 0f;
-            foreach (var p in points)
+            foreach (var p in _points)
             {
-                var dist = Vector2.Distance(p, center);
+                var dist = Vector2.Distance(p, _center);
                 if (dist > maxDist)
                     maxDist = dist;
             }
@@ -444,16 +446,16 @@ namespace CPRTouchVision.Models
         private readonly int _minPoints;
         private readonly int _minRadius;
         private readonly int _rateLimitMs;
-        private DateTime _lastSentTime = DateTime.MinValue;
+        //private DateTime _lastSentTime = DateTime.MinValue;
 
         // Optional: noise suppression (per cluster location)
         private readonly List<Vector3> _recentCenters = new();
         private readonly float _minClusterDistance = 10; // millimeters
-        private readonly float _mergeThreshold = 0.9f; // Relative to radius sum
+        private readonly float _mergeThreshold = 1.1f; // Relative to radius sum
 
         public int MinPoints => _minPoints;
 
-        public Touch2DClusterManager(double eps = 40, int minPoints = 10, int minRadius = 25, int rateLimitMs = 100)
+        public Touch2DClusterManager(double eps = 30, int minPoints = 4, int minRadius = 10, int rateLimitMs = 100)
         {
             _eps = eps;
             _minPoints = minPoints;
@@ -488,7 +490,6 @@ namespace CPRTouchVision.Models
                 initial.Add(touchCluster);
 
             }
-
             return MergeClusters(initial);
         }
 
@@ -501,21 +502,21 @@ namespace CPRTouchVision.Models
             {
                 if (merged[i]) continue;
 
-                var baseCluster = clusters[i];
-                List<Touch2DCluster> toMerge = new() { baseCluster };
+                //var baseCluster = clusters[i];
+                List<Touch2DCluster> toMerge = new() { clusters[i] };
                 merged[i] = true;
 
                 for (int j = i + 1; j < clusters.Count; j++)
                 {
                     if (merged[j]) continue;
 
-                    var other = clusters[j];
-                    float dist = (baseCluster.Center - other.Center).Length();
-                    float combinedRadius = baseCluster.Radius + other.Radius;
+                    //var other = clusters[j];
+                    float dist = (clusters[i].Center - clusters[j].Center).Length();
+                    float combinedRadius = clusters[i].Radius + clusters[j].Radius;
 
                     if (dist < combinedRadius * _mergeThreshold)
                     {
-                        toMerge.Add(other);
+                        toMerge.Add(clusters[j]);
                         merged[j] = true;
                     }
                 }

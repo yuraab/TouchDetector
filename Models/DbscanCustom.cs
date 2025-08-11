@@ -99,17 +99,21 @@ namespace CPRTouchVision.Models
     public class Dbscan2DCustom
     {
         private readonly double _eps;
+        private readonly double _epsSquared;
         private readonly int _minPts;
         private readonly object _lock = new();
+        //private Spatial2DGridIndex _gridIndex;
 
         public Dbscan2DCustom(double eps, int minPts)
         {
             _eps = eps;
+            _epsSquared = eps * eps; // precompute squared radius
             _minPts = minPts;
         }
 
         public List<List<DbscanCustom2DPoint>> Fit(List<DbscanCustom2DPoint> points)
         {
+
             int clusterId = 0;
             var clusters = new ConcurrentBag<List<DbscanCustom2DPoint>>();
             var index = new Spatial2DGridIndex(points, _eps);
@@ -125,7 +129,7 @@ namespace CPRTouchVision.Models
                     if (!visited.TryAdd(point, 0))
                         return;
 
-                    var neighbors = index.GetNeighbors(point, _eps);
+                    var neighbors = index.GetNeighbors(point, _eps, _epsSquared);
                     if (neighbors.Count < _minPts)
                     {
                         point.ClusterId = -1; // noise
@@ -165,16 +169,18 @@ namespace CPRTouchVision.Models
             {
                 var current = neighborQueue.Dequeue();
 
-                if (!visited.ContainsKey(current))
+                if (!visited.TryAdd(current, 1))
+                    continue; // already processed
+
+
+                var currentNeighbors = index.GetNeighbors(current, _eps, _epsSquared);
+                if (currentNeighbors.Count >= _minPts)
                 {
-                    visited.TryAdd(current, 0);
-                    var currentNeighbors = index.GetNeighbors(current, _eps);
-                    if (currentNeighbors.Count >= _minPts)
-                    {
-                        foreach (var n in currentNeighbors)
+                    foreach (var n in currentNeighbors)
+                        if (!visited.ContainsKey(n))
                             neighborQueue.Enqueue(n);
-                    }
                 }
+
 
                 if (current.ClusterId == null || current.ClusterId == -1)
                 {
@@ -183,6 +189,8 @@ namespace CPRTouchVision.Models
                 }
             }
         }
+
+
     }
 
 

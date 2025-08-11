@@ -315,32 +315,36 @@ namespace CPRTouchVision.Models
 
             foreach (var c in e.Clusters) 
             {
-                var center = _calibration.Convert3DTo2D(new(c.Center.X, c.Center.Y, c.Center.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-                if (center == null) continue;
+                OBSharp.Float2 center = new OBSharp.Float2(0,0);
+                if (c.Center3D != Vector3.Zero)
+                {
+                    var center2D = _calibration.Convert3DTo2D(new(c.Center3D.X, c.Center3D.Y, c.Center3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+                    if (center2D.HasValue) center = center2D.Value;
+                }
+
                 if (c.NormalizedCenter.X < 0 || c.NormalizedCenter.X > 1) continue;
                 if (c.NormalizedCenter.Y < 0 || c.NormalizedCenter.Y > 1) continue;
                 touches.Add(new TouchEvent
                 {
                     Id = idCounter++,
-                    X = center.Value.X,
-                    Y = center.Value.Y,
+                    X = center.X,
+                    Y = center.Y,
                     NormalizedX = c.NormalizedCenter.X,
                     NormalizedY = c.NormalizedCenter.Y,
-                    GameScreenX = (ushort) (c.NormalizedCenter.X * GameScreenWidth),
-                    GameScreenY = (ushort) (c.NormalizedCenter.Y * GameScreenHeight),
+                    GameScreenX = c.NormalizedCenter.X * GameScreenWidth,
+                    GameScreenY = c.NormalizedCenter.Y * GameScreenHeight,
                     Radius = c.Radius,
                     //Timestamp = c.Timestamp
                 });
-
+#if DEBUG
+                var t = touches.Last();
+                string message = $"[id:{t.Id} Local Center:({c.Center}) Screen Center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY}) Game Screen Center:({t.GameScreenX}:{t.GameScreenY}) r:{t.Radius:F2}]";
+                App.Log(message);
+#endif
 
             }
 
             Task.Run(() => _oscClient.Send(touches));
-
-            string message = $"Total: {touches.Count}; " + string.Join("; ", touches.Select(t =>
-            $"[id:{t.Id} center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY}) Game Screen Center:({t.GameScreenX}:{t.GameScreenY}) r:{t.Radius:F2}]"));
-            App.Log(message);
-
 
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
         }
@@ -509,9 +513,9 @@ namespace CPRTouchVision.Models
                 return;
 
             _calibrationPoints.Clear();
-            //IsWallPlaneSet = false;
             IsWallPlaneSet = false;
             IsCalibrating = true;
+            IsSelectingTouchZone = false;
             ResetTouchZone();
         }
 
@@ -750,14 +754,20 @@ namespace CPRTouchVision.Models
         {
             if (points.Count != 4)
                 throw new System.ArgumentException($"Touch zone points should be 4. Actual count {_touchZonePoints.Count}");
-            var sorted = points.OrderBy(p => p.SY).ThenBy(p => p.SX).ToList();
-            // First two are top points, sort them left-to-right
-            var topLeft = sorted[0];
-            var topRight = sorted[1];
 
-            // Last two are bottom points, sort them left-to-right
-            var bottomLeft = sorted[2];
-            var bottomRight = sorted[3];
+            DepthPoint center = DepthPoint.From(
+                (int)points.Average(p => p.SX),
+                (int)points.Average(p => p.SY),
+                points.Average(p => p.X),
+                points.Average(p => p.Y),
+                points.Average(p => p.Z)
+                );
+
+            var topLeft = points.OrderBy(p => p.X).ThenBy(p => p.Y).FirstOrDefault(p => p.X < center.X && p.Y < center.Y);
+            var topRight = points.OrderByDescending(p => p.X).ThenBy(p => p.Y).FirstOrDefault(p => p.X > center.X && p.Y < center.Y);
+
+            var bottomLeft = points.OrderBy(p => p.X).ThenByDescending(p => p.Y).FirstOrDefault(p => p.X < center.X && p.Y > center.Y);
+            var bottomRight = points.OrderByDescending(p => p.X).ThenByDescending(p => p.Y).FirstOrDefault(p => p.X > center.X && p.Y > center.Y);
             return new List<DepthPoint> { topLeft, topRight, bottomRight, bottomLeft };
         }
 
@@ -989,7 +999,7 @@ namespace CPRTouchVision.Models
             IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
             // Enable the touch zone toggle only when the app is running, the wall plane is defined,
             // we are not currently selecting the touch zone, and we are not fitting a plane.
-            IsTouchZoneToggleEnabled = IsRunning && IsWallPlaneSet && !IsSelectingTouchZone && !IsFittingPlane;
+            IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
             CheckIsReadyRunTouchLoop();
         }
 
@@ -1014,7 +1024,7 @@ namespace CPRTouchVision.Models
         partial void OnIsCalibratingChanged(bool value)
         {
             IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
-
+            IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
             if (_captureLoop != null)
                 _captureLoop.ShouldCollectIMU = IsCalibrating;
             CheckIsReadyRunTouchLoop();
@@ -1023,7 +1033,7 @@ namespace CPRTouchVision.Models
         partial void OnIsFittingPlaneChanged(bool value)
         {
             IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
-
+            IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
             if (IsFittingPlane)
             {
                 WallPlaneStatus = "Defining...";
@@ -1032,7 +1042,7 @@ namespace CPRTouchVision.Models
             CheckIsReadyRunTouchLoop();
         }
 
-        partial void OnIsTouchZoneChanged(bool value)
+        partial void OnIsTouchZoneChanged(bool value) 
         {
             IsTouchZoneToggleEnabled = IsRunning && !IsCalibrating && !IsTouchZone;
 

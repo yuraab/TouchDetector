@@ -88,7 +88,7 @@ namespace CPRTouchVision.Models
             }
         }
 
-        public List<DbscanCustom2DPoint> GetNeighbors(DbscanCustom2DPoint point, double eps)
+        public List<DbscanCustom2DPoint> GetNeighbors(DbscanCustom2DPoint point, double eps, double epsSquared)
         {
             var key = GetKey(point.Point);
             var neighbors = new List<DbscanCustom2DPoint>();
@@ -101,7 +101,7 @@ namespace CPRTouchVision.Models
                     {
                         foreach (var p in cellPoints)
                         {
-                            if (Distance(point.Point, p.Point) <= eps)
+                            if (DistanceSquared(point.Point, p.Point) <= epsSquared) // Squared values are used to avoid extra Sqrt calculations
                                 neighbors.Add(p);
                         }
                     }
@@ -118,11 +118,11 @@ namespace CPRTouchVision.Models
             );
         }
 
-        private double Distance(double[] a, double[] b)
+        private double DistanceSquared(double[] a, double[] b)
         {
             double dx = a[0] - b[0];
             double dy = a[1] - b[1];
-            return Math.Sqrt(dx * dx + dy * dy);
+            return (dx * dx + dy * dy);
         }
     }
 }

@@ -22,7 +22,7 @@ namespace CPRTouchVision.Models
     public sealed class TouchTracker_ : IDisposable
     {
         private readonly TouchVolume _volume;
-        private readonly TouchClusterManager _clusterManager;
+        private readonly Touch2DClusterManager _clusterManager;
         private readonly Calibration _calibration;
         private readonly int _fw;
         private readonly int _fh;
@@ -42,6 +42,7 @@ namespace CPRTouchVision.Models
         private bool _isCountPointsDisplayed = false;
         private int _maxQueueSize;
         private readonly object _depthLock = new object();
+        private bool flag = false;
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
@@ -50,7 +51,7 @@ namespace CPRTouchVision.Models
             _volume = volume;
             _calibration = calibration;
 
-            _clusterManager = new TouchClusterManager();
+            _clusterManager = new Touch2DClusterManager();
 
             _thread = new Thread(ProcessLoop)
             {
@@ -138,19 +139,10 @@ namespace CPRTouchVision.Models
                         {
                             try
                             {
-#if DEBUG
-                                //App.Log("Tracker processing image...");
-#endif
                                 var (image, geometry, time) = item.Value;
 
                                 // Process the image
                                 ProcessImage(image, geometry, time);
-
-                                // Then dispose
-                                //image.Dispose(); //Does not need for ushort[]
-
-                                // This is CRITICAL: allow next image to be enqueued
-                                //_readyToReceive.Set();
                             }
                             catch (Exception ex)
                             {
@@ -170,47 +162,38 @@ namespace CPRTouchVision.Models
 
         private void ProcessImage(ushort[] image, CalibrationGeometry geometry, DateTime time)
         {
-            List<TouchCluster> clusters = new List<TouchCluster>();
+            List<Touch2DCluster> clusters = new List<Touch2DCluster>();
 
+            //var points = Extract3DPointsInsideVolume(image);
+            var points = Extract2DPointsInsideVolume(image);
 #if DEBUG
-            var stopwatch = Stopwatch.StartNew();
-#endif
-
-            var points = Extract3DPointsInsideVolume(image);
-
-#if DEBUG
-            stopwatch.Stop();
-            //App.Log($"Filter points time: {stopwatch.ElapsedMilliseconds} ms");
-
             if (!_isCountPointsDisplayed && points.Count >= _clusterManager.MinPoints)
             {
                 App.Log($"[TouchTracker] Filtered points count: {points.Count}");
                 _isCountPointsDisplayed = false;
             }
-            //else
-                //App.Log($"[TouchTracker] Filtered points count: {points.Count}");
-
-            stopwatch = Stopwatch.StartNew();
 #endif
-            if (points.Count >= _clusterManager.MinPoints)
+            if (points.Count < _clusterManager.MinPoints)
             {
-                clusters = _clusterManager.DetectClusters(points, time);
+                return;
             }
-#if DEBUG
-            stopwatch.Stop();
-            if (points.Count >= _clusterManager.MinPoints)
-                App.Log($"Define clusters time: {stopwatch.ElapsedMilliseconds} ms");
-#endif
-
+            clusters = _clusterManager.DetectClusters(points);
             if (clusters?.Count > 0)
             {
                 foreach (var cluster in clusters)
                 {
-                    cluster.NormalizedCenter = _volume.GetHomographyCoordinatesFrom3D(cluster.Center);
+                    cluster.NormalizedCenter = _volume.GetHomographyCoordinatesFrom2D(cluster.Center);
+                    cluster.Center3D = _volume.Get3DPointFromLocal2DPoint(cluster.Center);
                 }
                 var frame = new TouchFrame(clusters);
                 TouchFrameReady?.Invoke(this, frame);
             }
+#if DEBUG
+            else if (!flag)
+            {
+                App.Log($"Points not detected as cluster: {points}");
+            }
+#endif
         }
 
         private List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage)

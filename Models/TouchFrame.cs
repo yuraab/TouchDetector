@@ -15,7 +15,7 @@ namespace CPRTouchVision.Models
         /// <summary>
         /// List of detected touch clusters.
         /// </summary>
-        public IReadOnlyList<TouchCluster> Clusters { get; }
+        public IReadOnlyList<Touch2DCluster> Clusters { get; }
 
         /// <summary>
         /// Time when this frame was generated (UTC recommended).
@@ -32,12 +32,12 @@ namespace CPRTouchVision.Models
         /// </summary>
         /// <param name="clusters">List of detected clusters.</param>
         /// <param name="timestamp">The time of capture in microseconds.</param>
-        public TouchFrame(IEnumerable<TouchCluster> clusters)
+        public TouchFrame(IEnumerable<Touch2DCluster> clusters)
         {
             if (clusters == null)
                 throw new ArgumentNullException(nameof(clusters));
 
-            Clusters = new ReadOnlyCollection<TouchCluster>(new List<TouchCluster>(clusters));
+            Clusters = new ReadOnlyCollection<Touch2DCluster>(new List<Touch2DCluster>(clusters));
            
         }
 
