@@ -1,18 +1,20 @@
-using ABI.System.Numerics;
+//using ABI.System.Numerics;
 using CPRTouchVision.Models;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
+//using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using OBSharp.Sensor;
+//using OBSharp.Sensor;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
 using System;
-using System.Diagnostics.Metrics;
+
+//using System;
+//using System.Diagnostics.Metrics;
 using System.Linq;
-using System.Numerics;
+//using System.Numerics;
 using WinUIEx;
-using SN = System.Numerics;
+//using SN = System.Numerics;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -27,6 +29,7 @@ namespace CPRTouchVision
         private TouchManager _manager = new();
         private float _cw = 1.0f;
         private float _ch = 1.0f;
+        private readonly TimeSpan touchDisplayTime = TimeSpan.FromSeconds(2);
 
 #if DEBUG
         private bool _singleOutPutDone = false;
@@ -56,8 +59,6 @@ namespace CPRTouchVision
 
         private void OnManagerChanged(object? sender, TouchManagerEventType e)
         {
-            //DispatcherQueue.TryEnqueue(() => 
-            //{
             switch (e)
             {
                 case TouchManagerEventType.NewFrame:
@@ -66,7 +67,6 @@ namespace CPRTouchVision
                 default:
                     break;
             }
-            //});
         }
 
         private void OnCanvasPaintSurface(object? sender, SKPaintSurfaceEventArgs e)
@@ -86,22 +86,34 @@ namespace CPRTouchVision
             if (_manager.IsCalibrating || !_manager.IsWallPlaneSet)
                 DrawCalibration(canvas);
 
-            //if (_manager.IsSelectingTouchZone || !_manager.IsTouchZoneSet)
-            //if (_manager.IsTouchZoneSet || _manager.IsSelectingTouchZone)
             else if (_manager.IsTouchZoneSet)
             {
-#if DEBUG
-                if (!_singleOutPutDone)
-                {
-                    App.Log("Display Touch Zone");
-                    _singleOutPutDone = true;
-                }
-#endif
                 DrawTouchZone(canvas);
             }
-
             else if (_manager.IsCalibrating || _manager.IsSelectingTouchZone)
                 DrawCursor(canvas);
+            else if (_manager.Touches.Count > 0 && DateTime.UtcNow < _manager.Touches[0].Timestamp + touchDisplayTime)
+                DrawTouches(canvas);
+        }
+
+        private void DrawTouches(SKCanvas canvas)
+        {
+            using var paint = new SKPaint
+            {
+                Color = SKColors.Red.WithAlpha(200),
+                IsAntialias = true,
+                Style = SKPaintStyle.Fill,
+                StrokeWidth = 3
+            };
+
+            foreach (var touch in _manager.Touches)
+            {
+                // Map normalized coords (0..1) to canvas size
+                //float cx = (float)(touch.X * _cw);
+                //float cy = (float)(touch.Y * _ch);
+
+                canvas.DrawCircle(touch.X, touch.Y, touch.ScreenRadius, paint);
+            }
         }
 
         private void DrawCalibration(SKCanvas canvas)
@@ -164,7 +176,6 @@ namespace CPRTouchVision
                 IsAntialias = true
             };
 
-            //using var path = GetTouchZoneProjectedRectPath(_manager.TouchZoneCorner1, _manager.TouchZoneCorner2);
             using var path = GetTouchZonePolygonPath();
 
             // Save the canvas layer to allow for blending
@@ -194,7 +205,6 @@ namespace CPRTouchVision
 
             canvas.Restore();
 
-
             // Optional: Draw a border around the zone
             using var borderPaint = new SKPaint
             {
@@ -216,54 +226,7 @@ namespace CPRTouchVision
 
             return path;
         }
-        private SKPath GetTouchZoneProjectedRectPath(DepthPoint corner1, DepthPoint corner2)
-        {
-            DepthPoint c1, c2, c3, c4;
-            TouchZoneHelper.ComputeAllFourCorners(
-                    corner1, corner2,
-                    _manager.PlaneNormal,
-                    _manager.Calibration,
-                    out c1, out c2, out c3, out c4);
 
-            // Build path
-            var path = new SKPath();
-            path.MoveTo(c1.Screen);
-            path.LineTo(c2.Screen);
-            path.LineTo(c3.Screen);
-            path.LineTo(c4.Screen);
-            path.Close();
-
-            return path;
-        }
-
-        private void DrawProjectedTouchZoneByCursor(SKCanvas canvas)
-        {
-
-            //var corner1 = _manager.TouchZoneCornerWorld1;
-            //var corner2 = ScreenToPlane(_manager.Cursor); // convert from screen to 3D
-            //var path = GetTouchZoneScreenPath(corner1, corner2);
-            var corner1 = _manager.TouchZoneCorner1;
-            int cursorX = (int)_manager.Cursor.X;
-            int cursorY = (int)_manager.Cursor.Y;
-            var corner2 = _manager.Convert2DToDepthPoint(cursorX, cursorY);
-
-            var path = GetTouchZoneProjectedRectPath(corner1, corner2);
-            var paint = new SKPaint()
-            {
-                Style = SKPaintStyle.Stroke,
-                Color = SKColors.Orange.WithAlpha(128),
-                StrokeWidth = 3,
-                IsAntialias = true
-            };
-
-            canvas.DrawPath(path, paint);
-        }
-
-        private void DrawTouchZoneByCursor(SKCanvas canvas)
-        {
-            DrawProjectedTouchZoneByCursor(canvas);
-            //DrawRectTouchZoneByCursor(canvas);
-        }
         private void DrawCursor(SKCanvas canvas)
         {
             var color = SKColors.GreenYellow;
@@ -282,9 +245,6 @@ namespace CPRTouchVision
             if (_manager.IsCalibrating && _manager.CalibrationPoints.Length > 0)
                 canvas.DrawLine(_manager.CalibrationPoints.Last().ToSKPoint(), _manager.Cursor, paint);
 
-            // Touch zone definition line and preview rectangle
-            //else if (_manager.IsSelectingTouchZone && !_manager.TouchZoneCorner1.IsEmpty)
-            //DrawTouchZoneByCursor(canvas);
             else if (_manager.IsSelectingTouchZone && (TouchManager.TouchZonePointsCount > _manager.TouchZonePoints.Length && _manager.TouchZonePoints.Length > 0))
             {
                 for (int i = 0; i < _manager.TouchZonePoints.Length - 1; i++)

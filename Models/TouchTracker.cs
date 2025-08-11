@@ -1,20 +1,8 @@
-﻿using CPRTouchVision;
-using CPRTouchVision.Models;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Documents;
-using Microsoft.UI.Xaml.Media;
-using OBSharp;
-using OBSharp.Sensor;
+﻿using OBSharp.Sensor;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using OB = OBSharp;
 
 namespace CPRTouchVision.Models
@@ -23,14 +11,8 @@ namespace CPRTouchVision.Models
     {
         private readonly TouchVolume _volume;
         private readonly Touch2DClusterManager _clusterManager;
-        private readonly Calibration _calibration;
-        private readonly int _fw;
-        private readonly int _fh;
 
         private Thread _thread;
-        private OBSharp.Sensor.Image? _currentImage;
-        private CalibrationGeometry _calibrationGeometry;
-        private readonly AutoResetEvent _readyToReceive = new(true);     // Initially ready
         private readonly AutoResetEvent _imageAvailable = new(false);    // Wait for image
         private readonly CancellationTokenSource _cts = new();
 
@@ -39,17 +21,14 @@ namespace CPRTouchVision.Models
 
         private bool _isRunning;
         private bool _isDisposed;
-        private bool _isCountPointsDisplayed = false;
         private int _maxQueueSize;
-        private readonly object _depthLock = new object();
-        private bool flag = false;
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
         public TouchTracker_(TouchVolume volume, Calibration calibration, int maxQueueSize = 5)
         {
             _volume = volume;
-            _calibration = calibration;
+            //_calibration = calibration;
 
             _clusterManager = new Touch2DClusterManager();
 
@@ -142,7 +121,7 @@ namespace CPRTouchVision.Models
                                 var (image, geometry, time) = item.Value;
 
                                 // Process the image
-                                ProcessImage(image, geometry, time);
+                                ProcessImage(image, time);
                             }
                             catch (Exception ex)
                             {
@@ -159,8 +138,7 @@ namespace CPRTouchVision.Models
 
         }
 
-
-        private void ProcessImage(ushort[] image, CalibrationGeometry geometry, DateTime time)
+        private void ProcessImage(ushort[] image, DateTime time)
         {
             List<Touch2DCluster> clusters = new List<Touch2DCluster>();
 
@@ -188,12 +166,6 @@ namespace CPRTouchVision.Models
                 var frame = new TouchFrame(clusters);
                 TouchFrameReady?.Invoke(this, frame);
             }
-#if DEBUG
-            else if (!flag)
-            {
-                App.Log($"Points not detected as cluster: {points}");
-            }
-#endif
         }
 
         private List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage)

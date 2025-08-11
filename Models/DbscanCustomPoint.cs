@@ -29,6 +29,5 @@ namespace CPRTouchVision.Models
         {
             Point = new[] { x, y };
         }
-
     }
 }
