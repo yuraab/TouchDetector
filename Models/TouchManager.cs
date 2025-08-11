@@ -604,10 +604,6 @@ namespace CPRTouchVision.Models
                     _maxWallDepth = config.MaxWallDepth ?? ushort.MaxValue;
                     GameScreenWidth = config.GameScreenWidth ?? _defaultGameScreenWidth;
                     GameScreenHeight = config.GameScreenHeight ?? _defaultGameScreenHeight;
-#if DEBUG
-                    App.Log($"GameScreenWidth: {GameScreenWidth}");
-                    App.Log($"GameScreenHeight: {GameScreenHeight}");
-#endif
                 }
             }
             _isConfigGotten = true;
@@ -648,7 +644,9 @@ namespace CPRTouchVision.Models
                 return;
 
             var d = GetDepth(point);
+#if DEBUG
             App.Log($"Depth {d}");
+#endif
 
             if (d > 0 && _calibrationPoints.Count < CalibrationPointsCount)
             {
@@ -721,7 +719,9 @@ namespace CPRTouchVision.Models
             }
 
             var p3D = Convert2DTo3DPoint(pointX, pointY, d);
+#if DEBUG
             App.Log($" Corner point => {p3D}. Depth => {d}");
+#endif
             return ProjectPointOntoPlane(p3D);
         }
 
@@ -851,7 +851,9 @@ namespace CPRTouchVision.Models
             _minWalDepth = (ushort)minD;
             _maxWallDepth = (ushort)maxD;
             var points = result.Where(p => !p.IsEmpty).ToArray();
+#if DEBUG
             App.Log($"Min/Max depth of wall {_minWalDepth}/{_maxWallDepth}");
+#endif
             (_planeD, _planeNormal) = await Task.Run(() => FitPlaneSVD2(points));
 
             //Debug.WriteLine($"Wall normal: {_planeNormal}");
