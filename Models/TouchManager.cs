@@ -211,6 +211,14 @@ namespace CPRTouchVision.Models
             GameScreenHeight = _defaultGameScreenHeight;
         }
 
+        public void Undo()
+        {
+            if (IsCalibrating && _calibrationPoints.Count > 0)
+                _calibrationPoints.RemoveAt(_calibrationPoints.Count - 1);
+            if (IsSelectingTouchZone && _touchZonePoints.Count > 0)
+                _touchZonePoints.RemoveAt(_touchZonePoints.Count - 1);
+        }
+
         public void Toggle()
         {
             if (IsRunning)

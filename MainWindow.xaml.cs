@@ -1,20 +1,13 @@
-//using ABI.System.Numerics;
 using CPRTouchVision.Models;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
-//using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-//using OBSharp.Sensor;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
 using System;
 
-//using System;
-//using System.Diagnostics.Metrics;
 using System.Linq;
-//using System.Numerics;
 using WinUIEx;
-//using SN = System.Numerics;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -31,15 +24,26 @@ namespace CPRTouchVision
         private float _ch = 1.0f;
         private readonly TimeSpan touchDisplayTime = TimeSpan.FromSeconds(2);
 
-#if DEBUG
-        private bool _singleOutPutDone = false;
-#endif
-
         public MainWindow()
         {
             _ = _manager.LoadConfig();
             InitializeComponent();
             _manager.Changed += OnManagerChanged;
+            var ctrlZ = new KeyboardAccelerator()
+            {
+                Key = Windows.System.VirtualKey.Z,
+                Modifiers = Windows.System.VirtualKeyModifiers.Control
+            };
+            ctrlZ.Invoked += CtrlZ_Invoked;
+
+            (this.Content as UIElement)?.KeyboardAccelerators.Add(ctrlZ);
+
+        }
+
+        private void CtrlZ_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+        {
+            _manager.Undo();
+            args.Handled = true;
         }
 
         private void OnToggleClicked(object sender, RoutedEventArgs e)
@@ -108,10 +112,6 @@ namespace CPRTouchVision
 
             foreach (var touch in _manager.Touches)
             {
-                // Map normalized coords (0..1) to canvas size
-                //float cx = (float)(touch.X * _cw);
-                //float cy = (float)(touch.Y * _ch);
-
                 canvas.DrawCircle(touch.X, touch.Y, touch.ScreenRadius, paint);
             }
         }
@@ -265,7 +265,6 @@ namespace CPRTouchVision
                 var x = (int)(point.Position.X * s / _cw * _manager.FW);
                 var y = (int)(point.Position.Y * s / _ch * _manager.FH);
                 _manager.Cursor = new(x, y);
-
             }
         }
 
@@ -280,16 +279,10 @@ namespace CPRTouchVision
 
                 if (_manager.IsCalibrating)
                 {
-#if DEBUG
-                    App.Log($"Add calibrating point {message}");
-#endif
                     _manager.AddCalibrationPoint(new(x, y));
                 }
                 else if (_manager.IsSelectingTouchZone)
                 {
-#if DEBUG
-                    App.Log($"Add touch zone point {message}");
-#endif
                     _manager.AddTouchZonePoint(x, y);
                 }
 
