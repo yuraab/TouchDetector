@@ -18,7 +18,7 @@ namespace CPRTouchVision.Models
         public DepthPoint[] TouchZoneCorners;
         public Vector3? CameraPosition;
         public Quaternion? CameraRotation;
-
+        public bool? FloorCamera;
 
         public Config(
             int? gameScreenWidth,
@@ -27,20 +27,21 @@ namespace CPRTouchVision.Models
             int? maxOffset,
             ushort? minWallDepth,
             ushort? maxWallDepth,
-            float? planeD, 
+            float? planeD,
             Vector3? planeNormal,
             DepthPoint? touchZoneCorner1,
             DepthPoint? touchZoneCorner2,
             DepthPoint[] touchZoneCorners,
-            Vector3? cameraPosition, 
-            Quaternion? cameraRotation
+            Vector3? cameraPosition,
+            Quaternion? cameraRotation,
+            bool? floorCamera
         )
 
         {
             GameScreenWidth = gameScreenWidth;
             GameScreenHeight = gameScreenHeight;
             MinOffset = minOffset;
-            MaxOffset = maxOffset; 
+            MaxOffset = maxOffset;
             MinWallDepth = minWallDepth;
             MaxWallDepth = maxWallDepth;
             PlaneD = planeD;
@@ -50,6 +51,7 @@ namespace CPRTouchVision.Models
             TouchZoneCorners = touchZoneCorners;
             CameraPosition = cameraPosition;
             CameraRotation = cameraRotation;
+            FloorCamera = floorCamera;
         }
 
     }

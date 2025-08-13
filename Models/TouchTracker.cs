@@ -145,10 +145,9 @@ namespace CPRTouchVision.Models
             //var points = Extract3DPointsInsideVolume(image);
             var points = Extract2DPointsInsideVolume(image);
 #if DEBUG
-            if (!_isCountPointsDisplayed && points.Count >= _clusterManager.MinPoints)
+            if (points.Count >= _clusterManager.MinPoints)
             {
                 App.Log($"[TouchTracker] Filtered points count: {points.Count}");
-                _isCountPointsDisplayed = false;
             }
 #endif
             if (points.Count < _clusterManager.MinPoints)
