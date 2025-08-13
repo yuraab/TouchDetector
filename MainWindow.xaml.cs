@@ -28,6 +28,10 @@ namespace CPRTouchVision
         {
             _ = _manager.LoadConfig();
             InitializeComponent();
+
+            // Give manager a reference to the UI dispatcher
+            _manager.UIDispatcherQueue = this.DispatcherQueue;
+
             _manager.Changed += OnManagerChanged;
             var ctrlZ = new KeyboardAccelerator()
             {
@@ -104,7 +108,8 @@ namespace CPRTouchVision
         {
             using var paint = new SKPaint
             {
-                Color = SKColors.Red.WithAlpha(200),
+                // Color = SKColors.Red.WithAlpha(200),
+                Color = SKColors.Red,
                 IsAntialias = true,
                 Style = SKPaintStyle.Fill,
                 StrokeWidth = 3
@@ -112,7 +117,8 @@ namespace CPRTouchVision
 
             foreach (var touch in _manager.Touches)
             {
-                canvas.DrawCircle(touch.X, touch.Y, touch.ScreenRadius, paint);
+                var radius = touch.ScreenRadius < 10 ? 10 : touch.ScreenRadius;
+                canvas.DrawCircle(touch.X, touch.Y, radius, paint);
             }
         }
 

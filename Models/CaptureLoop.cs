@@ -14,16 +14,23 @@ namespace CPRTouchVision.Models
         private Vector3 _gyroVector = Vector3.Zero;
         private Vector3 _accelVector = Vector3.Zero;
         private int _imuIndex = 0;
+        private readonly int _requiredSamples = 30;
 
         protected readonly Thread _thread;
         protected volatile bool _isRunning = false;
 
         public bool ShouldCollectIMU = false;
+        private bool _shouldGetCameraPosition = true;
+        private Vector3 _accelSum;
+        private int _sampleCount = 0;
+        private object _lock;
+
         public event EventHandler<CaptureLoopEventArgs>? CaptureReady;
         public event EventHandler<LoopFailedEventArgs>? LoopFailed;
+        public event EventHandler<bool>? CameraPositionReady;
 
 
-        public CaptureLoop(Device device)
+        public CaptureLoop(Device device, bool shouldGetCameraPosition = true)
         {
             _device = device;
             _thread = new Thread(BackgroundLoop) { IsBackground = true };
@@ -36,6 +43,7 @@ namespace CPRTouchVision.Models
                 ColorFormat = ImageFormat.ColorBgra32,
                 WiredSyncMode = WiredSyncMode.Standalone,
             };
+            _shouldGetCameraPosition = shouldGetCameraPosition;
         }
 
         public void Run()
@@ -51,6 +59,7 @@ namespace CPRTouchVision.Models
             _device.GetCalibration(_config.DepthMode, _config.ColorResolution, out calibration);
         }
 
+
         private void BackgroundLoop()
         {
             try
@@ -59,7 +68,7 @@ namespace CPRTouchVision.Models
 
                 while (_isRunning)
                 {
-                    if (ShouldCollectIMU && !_isIMURunning)
+                    if ((ShouldCollectIMU || _shouldGetCameraPosition) && !_isIMURunning)
                     {
                         _device.StartImu();
                         _isIMURunning = true;
@@ -67,7 +76,7 @@ namespace CPRTouchVision.Models
                         _gyroVector = Vector3.Zero;
                         _accelVector = Vector3.Zero;
                     }
-                    else if (!ShouldCollectIMU && _isIMURunning)
+                    else if (!(ShouldCollectIMU || _shouldGetCameraPosition) && _isIMURunning)
                     {
                         _device.StopImu();
                         _isIMURunning = false;
@@ -98,6 +107,35 @@ namespace CPRTouchVision.Models
                         _accelVector.Z = _accelVector.Z + (sample.AccelerometerSample.Z - _accelVector.Z) / (_imuIndex + 1);
 
                         _imuIndex++;
+
+                    }
+                    else if (_shouldGetCameraPosition && _isIMURunning && _device.TryGetImuSample(out var sampleC))
+                    {
+                        _accelSum += new Vector3(
+                            sampleC.AccelerometerSample.X,
+                            sampleC.AccelerometerSample.Y,
+                            sampleC.AccelerometerSample.Z
+                            );
+                        _sampleCount++;
+
+                        if (_sampleCount >= _requiredSamples)
+                        {
+                            Vector3 avgAccel = _accelSum / _sampleCount;
+                            _accelVector = Vector3.Normalize(avgAccel);
+                            // Compare dot product with camera forward vector (0,0,1)
+                            float dot = Vector3.Dot(_accelVector, Vector3.UnitZ);
+#if DEBUG
+                            App.Log($"Compare dot product with camera forward vector (0,0,1) => {dot}");
+#endif
+                            bool isFloorMounted = dot < 0;
+                            CameraPositionReady?.Invoke(this, isFloorMounted);
+
+                            // Reset for next detection cycle
+                            _accelSum = Vector3.Zero;
+                            _sampleCount = 0;
+                            _shouldGetCameraPosition = false;
+                        }
+
                     }
                 }
             }

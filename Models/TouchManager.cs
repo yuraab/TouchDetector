@@ -4,6 +4,7 @@ using ComputeSharp;
 using Emgu.CV;
 using Emgu.CV.Dai;
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using Newtonsoft.Json;
@@ -110,6 +111,8 @@ namespace CPRTouchVision.Models
         [ObservableProperty]
         int _gameScreenHeight;
 
+        public DispatcherQueue UIDispatcherQueue { get; set; }
+        private bool _isCameraPositionDefined = false;
         private bool _disposed = false;
         private Calibration _calibration = new();
         public Calibration Calibration => _calibration;
@@ -181,11 +184,8 @@ namespace CPRTouchVision.Models
         public EventHandler<TouchManagerEventType>? Changed;
 
         private UdpClient _client = new();
-        //private IPEndPoint _endpoint = new IPEndPoint(IPAddress.Loopback, 12345);
-        //private CalibrationGeometry _sourceCamera;
-        //private List<TouchCluster> _clusters = [];
-        //private CalibrationGeometry _sourseCameraHandleTouch = CalibrationGeometry.Unknown;
         private bool _isConfigGotten = false;
+
 #if DEBUG
         private bool _isSingleOutputDone;
         
@@ -196,6 +196,7 @@ namespace CPRTouchVision.Models
         private IntPtr _noiseFilter;
         private ushort _maxWallDepth = 0;
         private ushort _minWalDepth = ushort.MaxValue;
+        private bool _floorCamera; // camera is mounted on the floor/ceil
 
         public TouchManager()
         {
@@ -247,6 +248,7 @@ namespace CPRTouchVision.Models
             _captureLoop.CaptureReady += OnCaptureReady;
             _captureLoop.LoopFailed += OnLoopFailed;
             _captureLoop.GetCalibration(out _calibration);
+            _captureLoop.CameraPositionReady += OnCameraPositionReady;
 
             _transformation = new Transformation(_calibration);
 
@@ -333,8 +335,8 @@ namespace CPRTouchVision.Models
                     Timestamp = time
                 });
 #if DEBUG
-                var t = touches.Last();
-                string message = $"[id:{t.Id} Local Center:({c.Center}) Screen Center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY}) Game Screen Center:({t.GameScreenX}:{t.GameScreenY}) r:{t.Radius:F2}]";
+                var t = _touches.Last();
+                string message = $"[id:{t.Id} Local Center:({c.Center}) Screen Center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY}) r:{t.Radius:F2}]";
                 App.Log(message);
 #endif
 
@@ -360,6 +362,31 @@ namespace CPRTouchVision.Models
             App.Log("Touch loop failed");
         }
 
+        private void OnCameraPositionReady(object? sender, bool onFloorMounted)
+        {
+            var where = onFloorMounted ? "floor" : "ceil";
+            
+            App.Log($"Camera is mounted on the {where}");
+            if (onFloorMounted != _floorCamera)
+            {
+                var whereWas = _floorCamera == null ? "not defined" : _floorCamera ? "floor" : "ceil";
+                App.Log($"Camera position was changed from {whereWas} to {where}");
+                
+                _floorCamera = onFloorMounted;
+                _isCameraPositionDefined = true;
+
+                // Redo calibration if position of camera was changed
+                // Make sure StartCalibration runs on UI thread
+                UIDispatcherQueue.TryEnqueue(() => StartCalibration()); 
+            }
+            else
+            {
+                _floorCamera = onFloorMounted; // ensure it's assigned (first run)
+                _isCameraPositionDefined = true;
+            }
+
+        }
+
         private void OnCaptureReady(object? sender, CaptureLoopEventArgs e)
         {
             var now = DateTime.UtcNow;
@@ -370,6 +397,8 @@ namespace CPRTouchVision.Models
             using var colorImage = capture.ColorImage;
             if (colorImage != null)
             {
+                if (!_floorCamera)
+                    FlipColor180(colorImage);
                 _colorBitmap.Update((bitmap) =>
                 {
                     bitmap.InstallPixels(_colorBitmapInfo, colorImage.Buffer);
@@ -379,8 +408,20 @@ namespace CPRTouchVision.Models
             using var depthImage = capture.DepthImage;
 
             if (depthImage != null)
-            { 
-                GetDepthImageWithoutFilter(depthImage);
+            {
+                using var aligned = new OB.Image(OB.ImageFormat.Depth16, _fw, _fh);
+                _transformation?.DepthImageToColorCamera(depthImage, aligned);
+
+                if (!_floorCamera)
+                    FlipDepth180(aligned); // in-place flip
+
+                _depthData.CopyFrom(aligned);
+
+                _depthBitmap.Update(bitmap =>
+                {
+                    bitmap.Pixels = _depthVisualizer.Update(_depthData);
+                });
+
                 if (_isReadyReceiveNewCapture && _touchLoop != null)
                 {
                     _ = _touchLoop.TrySendImage(_depthData, _fw, _fh, now);
@@ -390,12 +431,80 @@ namespace CPRTouchVision.Models
 
         }
 
+        // Unsafe helper for color flip (4 bytes per pixel assumed, RGBA)
+        private unsafe void FlipColor180(OB.Image colorImage)
+        {
+            byte* ptr = (byte*)colorImage.Buffer;
+            int totalPixels = colorImage.WidthPixels * colorImage.HeightPixels;
+            int bpp = 4; // RGBA
+
+            byte* start = ptr;
+            byte* end = ptr + (totalPixels - 1) * bpp;
+
+            while (start < end)
+            {
+                for (int i = 0; i < bpp; i++)
+                {
+                    byte tmp = start[i];
+                    start[i] = end[i];
+                    end[i] = tmp;
+                }
+                start += bpp;
+                end -= bpp;
+            }
+        }
+
+        // Unsafe helper for depth flip (ushort per pixel)
+        private void FlipDepth180(OB.Image img)
+        {
+            if (img == null) return;
+
+            int width = img.WidthPixels;
+            int height = img.HeightPixels;
+
+            unsafe
+            {
+                ushort* ptr = (ushort*)img.Buffer;
+                int stride = width;
+
+                for (int y = 0; y < height / 2; y++)
+                {
+                    int oppositeY = height - 1 - y;
+
+                    for (int x = 0; x < width; x++)
+                    {
+                        // swap pixels
+                        ushort tmp = ptr[y * stride + x];
+                        ptr[y * stride + x] = ptr[oppositeY * stride + (width - 1 - x)];
+                        ptr[oppositeY * stride + (width - 1 - x)] = tmp;
+                    }
+                }
+
+                // If height is odd, flip the middle row
+                if ((height & 1) != 0)
+                {
+                    int midY = height / 2;
+                    for (int x = 0; x < width / 2; x++)
+                    {
+                        int oppositeX = width - 1 - x;
+                        ushort tmp = ptr[midY * stride + x];
+                        ptr[midY * stride + x] = ptr[midY * stride + oppositeX];
+                        ptr[midY * stride + oppositeX] = tmp;
+                    }
+                }
+            }
+        }
+
         private void GetDepthImageWithoutFilter(Image depthImage)
         {
 
             using var aligned = new OB.Image(OB.ImageFormat.Depth16, _fw, _fh);
             _transformation?.DepthImageToColorCamera(depthImage, aligned);
+
+            if (!_floorCamera)
+                FlipDepth180(aligned);
             _depthData.CopyFrom(aligned);
+
             _depthBitmap.Update((bitmap) =>
             {
                 bitmap.Pixels = _depthVisualizer.Update(_depthData);
@@ -508,6 +617,24 @@ namespace CPRTouchVision.Models
 
         public void StartCalibration()
         {
+            // Run UI code on the main thread
+            if (UIDispatcherQueue != null)
+            {
+                UIDispatcherQueue.TryEnqueue(() =>
+                {
+                    // UI updates go here
+                    PerformCalibration();
+                });
+            }
+            else
+            {
+                // fallback if DispatcherQueue not set
+                PerformCalibration();
+            }
+        }
+
+        private void PerformCalibration()
+        {
             if (IsCalibrating)
                 return;
 
@@ -584,14 +711,7 @@ namespace CPRTouchVision.Models
                         IsWallPlaneSet = true;
                         IsWallPlaneSet = true; 
                     }
-                    /*
-                    if (IsWallPlaneSet && config.TouchZoneCorner1.HasValue && config.TouchZoneCorner2.HasValue)
-                    {
-                        _touchZoneCorner1 = config.TouchZoneCorner1.Value;
-                        _touchZoneCorner2 = config.TouchZoneCorner2.Value;
-                        IsTouchZoneSet = true;
-                    }
-                    */
+
                     if (IsWallPlaneSet && config.TouchZoneCorners != null)
                     {
                         _touchZonePoints = config.TouchZoneCorners.ToList();
@@ -603,6 +723,7 @@ namespace CPRTouchVision.Models
                     _maxWallDepth = config.MaxWallDepth ?? ushort.MaxValue;
                     GameScreenWidth = config.GameScreenWidth ?? _defaultGameScreenWidth;
                     GameScreenHeight = config.GameScreenHeight ?? _defaultGameScreenHeight;
+                    _floorCamera = config.FloorCamera ?? true;
                 }
             }
             _isConfigGotten = true;
@@ -626,7 +747,8 @@ namespace CPRTouchVision.Models
                 _touchZoneCorner2.IsEmpty ? null : _touchZoneCorner2,
                 TouchZonePoints,
                 _cameraPosition,
-                _cameraRotation.IsIdentity ? null : _cameraRotation
+                _cameraRotation.IsIdentity ? null : _cameraRotation,
+                _floorCamera
             );
             var json = JsonConvert.SerializeObject(config) ?? "";
 #if DEBUG
@@ -766,9 +888,20 @@ namespace CPRTouchVision.Models
 
             var bottomLeft = points.OrderBy(p => p.X).ThenByDescending(p => p.Y).FirstOrDefault(p => p.X < center.X && p.Y > center.Y);
             var bottomRight = points.OrderByDescending(p => p.X).ThenByDescending(p => p.Y).FirstOrDefault(p => p.X > center.X && p.Y > center.Y);
-            return new List<DepthPoint> { topLeft, topRight, bottomRight, bottomLeft };
+            var sorted_points = new List<DepthPoint> { topLeft, topRight, bottomRight, bottomLeft };
+            return _floorCamera ? sorted_points : Flip180(sorted_points);
         }
 
+        private List<DepthPoint> Flip180(List<DepthPoint> points)
+        {
+            return new List<DepthPoint>
+            {
+                points[2],  // bottom-right => top-left
+                points[3],  // bottom-left => top-right
+                points[0],  // top-left => bottom-right
+                points[1]   // bottom-left => top-right
+            };
+        }
         private List<Vector3> ScalePoints(List<Vector3> originalPoints, int fromWidth, int fromHeight, int toWidth, int toHeight)
         {
             float scaleX = (float)toWidth / fromWidth;
@@ -968,11 +1101,27 @@ namespace CPRTouchVision.Models
         public ushort GetDepth(int x, int y)
         {
             ushort d = 0;
+
+            // Flip coordinates if ceiling-mounted
+            //if (!_floorCamera)
+            if (false)
+            {
+#if DEBUG
+                var x_ = x;
+                var y_ = y;
+#endif
+                x = _fw - 1 - x; // horizontal flip
+                y = _fh - 1 - y; // vertical flip
+#if DEBUG
+                App.Log($"Ceil-mounted camera. Flip {x_}:{y_} to {x}:{y}");
+#endif
+            }
+
             var i = y * _fw + x;
 
             lock (_depthLock)
             {
-                if (i < _depthData.Length)
+                if ((uint)i < (uint)_depthData.Length)
                     d = _depthData[i];
                 else
                 {
@@ -987,7 +1136,7 @@ namespace CPRTouchVision.Models
 
         private void CheckIsReadyRunTouchLoop()
         {
-            IsReadyTrackTouch = IsWallPlaneSet && IsTouchZoneSet && (MaxOffset > MinOffset);
+            IsReadyTrackTouch = _isCameraPositionDefined && IsWallPlaneSet && IsTouchZoneSet && (MaxOffset > MinOffset);
         }
 
         partial void OnIsRunningChanged(bool value)
@@ -1153,8 +1302,9 @@ namespace CPRTouchVision.Models
             Dispose();
         }
 
-        public static string CONFIG_FOLDER => Path.Combine(CommonFolderPath, "CPR Trampolines");
-        public static string CONFIG_PATH => Path.Combine(CommonFolderPath, "CPR Trampolines", "config.json");
+        public static string CONFIG_SUB_FOLDER = "CPRTouchVision";
+        public static string CONFIG_FOLDER => Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
+        public static string CONFIG_PATH => Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER, "config.json");
         public static string CommonFolderPath
         {
             get
