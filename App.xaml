@@ -11,6 +11,39 @@
                 <!-- Other merged dictionaries here -->
             </ResourceDictionary.MergedDictionaries>
             <!-- Other app resources here -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SvgImageSource x:Key="CprTouchVisionLogo"
+                                    UriSource="ms-appx:///Assets/svg/cpr-touch-vision-icon-light.svg" />
+                    <Color x:Key="SystemAccentColor">#FF58C4D6</Color>
+                    <Color x:Key="AccentColorPressed">#9958C4D6</Color>
+                    <Color x:Key="SystemAccentColorLight1">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorLight2">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorLight3">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorDark1">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorDark2">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorDark3">#FF58C4D6</Color>
+                    <Color x:Key="ImageButtonOverlayForeground">#CCFFFFFF</Color>
+                    <Color x:Key="ImageButtonOverlayForegroundPointOver">#B2FFFFFF</Color>
+                    <Color x:Key="ImageButtonOverlayForegroundPressed">#B2FFFFFF</Color>
+                    <Color x:Key="ImageButtonOverlayBackground">#4D000000</Color>
+                    <Color x:Key="ImageButtonOverlayBackgroundPointOver">#66000000</Color>
+                    <Color x:Key="ImageButtonOverlayBackgroundPressed">#80000000</Color>
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="Dark">
+                    <SvgImageSource x:Key="CprTouchVisionLogo"
+                                    UriSource="ms-appx:///Assets/svg/cpr-touch-vision-icon-light.svg" />
+                    <Color x:Key="SystemAccentColor">#FF58C4D6</Color>
+                    <Color x:Key="AccentColorPressed">#9958C4D6</Color>
+                    <Color x:Key="SystemAccentColorLight1">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorLight2">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorLight3">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorDark1">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorDark2">#FF58C4D6</Color>
+                    <Color x:Key="SystemAccentColorDark3">#FF58C4D6</Color>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

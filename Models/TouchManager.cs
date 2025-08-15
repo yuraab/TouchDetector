@@ -1,20 +1,4 @@
 ﻿//using ABI.System.Numerics;
-using CommunityToolkit.Mvvm.ComponentModel;
-using ComputeSharp;
-using Emgu.CV;
-using Emgu.CV.Dai;
-using Microsoft.UI;
-using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Media;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using OBSharp;
-using OBSharp.BodyTracking;
-using OBSharp.Sensor;
-using OpenCvSharp.Flann;
-using SkiaSharp;
-using SkiaSharp.Views.Windows;
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
@@ -33,6 +17,23 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using ComputeSharp;
+using CPRLib;
+using Emgu.CV;
+using Emgu.CV.Dai;
+using Microsoft.UI;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using OBSharp;
+using OBSharp.BodyTracking;
+using OBSharp.Sensor;
+using OpenCvSharp.Flann;
+using SkiaSharp;
+using SkiaSharp.Views.Windows;
 using Windows.AI.MachineLearning;
 using static OpenCvSharp.FileStorage;
 using CV = Emgu.CV;
@@ -143,6 +144,7 @@ namespace CPRTouchVision.Models
 
         private System.Numerics.Quaternion _cameraRotation = System.Numerics.Quaternion.Identity;
         private DepthVisualizer _depthVisualizer;
+        private PipeServer _server = new PipeServer(PipeName.TouchVision);
         public readonly object Lock = new object();
 
         // Rendering
@@ -210,6 +212,8 @@ namespace CPRTouchVision.Models
             MinOffset = _defaltMinOffset;
             GameScreenWidth = _defaultGameScreenWidth;
             GameScreenHeight = _defaultGameScreenHeight;
+            _server.Start();
+            _server.MessageReceived += OnMessageReceived;
         }
 
         public void Undo()
@@ -240,7 +244,7 @@ namespace CPRTouchVision.Models
             };
             OrbbecNative.ob_noise_removal_filter_set_filter_params(_noiseFilter, parameters, out error);
         }
-        private void Start()
+        public void Start()
         {
             if (IsRunning || !OBSharp.Sensor.Device.TryOpen(out var device)) return;
 
@@ -596,7 +600,14 @@ namespace CPRTouchVision.Models
         {
             if (!IsRunning) return;
 
-            OrbbecNative.ob_delete_filter(_noiseFilter, out _);
+            try
+            {
+                OrbbecNative.ob_delete_filter(_noiseFilter, out _);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex);
+            }
 
             if (_captureLoop != null)
             {
@@ -1288,6 +1299,24 @@ namespace CPRTouchVision.Models
             }
         }
 
+        private void OnMessageReceived(object? sender, string message)
+        {
+            Debug.WriteLine(message);
+            switch (message)
+            {
+                case "start":
+                    if (!IsRunning)
+                        App.Current.DispatcherQueue.TryEnqueue(() => Start());
+                    break;
+                case "stop":
+                    if (IsRunning)
+                        App.Current.DispatcherQueue.TryEnqueue(() => Stop());
+                    break;
+                default:
+                    break;
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed) return;
@@ -1325,79 +1354,6 @@ namespace CPRTouchVision.Models
     {
         NewFrame,
         CalibrationUpdate
-    }
-
-    public static class Extensions
-    {
-        public static SKPoint ToSKPoint(this Vector3 point)
-        {
-            return new SKPoint(point.X, point.Y);
-        }
-
-        public static bool IsPointInsideTriangle(this Vector2 p, Vector2 a, Vector2 b, Vector2 c)
-        {
-            var v0 = c - a;
-            var v1 = b - a;
-            var v2 = p - a;
-
-            float dot00 = Vector2.Dot(v0, v0);
-            float dot01 = Vector2.Dot(v0, v1);
-            float dot02 = Vector2.Dot(v0, v2);
-            float dot11 = Vector2.Dot(v1, v1);
-            float dot12 = Vector2.Dot(v1, v2);
-
-            float denom = dot00 * dot11 - dot01 * dot01;
-            if (denom == 0) return false;
-
-            float u = (dot11 * dot02 - dot01 * dot12) / denom;
-            float v = (dot00 * dot12 - dot01 * dot02) / denom;
-
-            return (u >= 0) && (v >= 0) && (u + v <= 1);
-        }
-
-        public static void CopyFrom(this ushort[] buffer, OB.Image image)
-        {
-            if (buffer.Length * sizeof(ushort) != image.SizeBytes)
-                throw new ArgumentException("Image buffer size is not matching destination buffer size.");
-
-            unsafe
-            {
-                ushort* source = (ushort*)image.Buffer.ToPointer();
-                long size = buffer.Length * sizeof(ushort);
-
-                fixed (ushort* destination = buffer)
-                {
-                    Buffer.MemoryCopy(source, destination, size, size);
-                }
-            }
-        }
-
-        public static void CopyFrom(this ReadOnlyBuffer<uint> buffer, ushort[] data)
-        {
-            Span<uint> casted = MemoryMarshal.Cast<ushort, uint>(data.AsSpan());
-            buffer.CopyFrom(casted);
-        }
-
-        public static void CopyTo(this ReadWriteBuffer<uint> buffer, SKBitmap bitmap)
-        {
-            var bytes = MemoryMarshal.AsBytes<uint>(buffer.ToArray()).ToArray();
-            Marshal.Copy(bytes, 0, bitmap.GetPixels(), bytes.Length);
-        }
-
-        public static Vector3 GetPosition(this Joint joint)
-        {
-            return new(joint.PositionMm.X, joint.PositionMm.Y, joint.PositionMm.Z);
-        }
-
-        public static OBSharp.Float3 ToFloat3(this Vector3 point)
-        {
-            return new OBSharp.Float3(point.X, point.Y, point.Z);
-        }
-
-        public static Vector3 ToVector3(this OBSharp.Float3 point)
-        {
-            return new Vector3(point.X, point.Y, point.Z);
-        }
     }
 
     public class ConfigMissingException : Exception

@@ -1,6 +1,4 @@
 ﻿//using HardwareDetection;
-using Microsoft.UI.Xaml;
-using OBSharp;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -9,7 +7,16 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using CPRLib;
+using CPRTouchVision.Models;
+using CPRTouchVision.Windows;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using OBSharp;
 using Windows.ApplicationModel;
+using Windows.ApplicationModel.Activation;
+using Windows.Devices.Display.Core;
+using WinUIEx;
 using WinUIEx.Messaging;
 
 
@@ -23,14 +30,21 @@ namespace CPRTouchVision
     /// </summary>
     public partial class App : Application
     {
+        public static MainWindow Main { get; private set; } = null!;
+        public DispatcherQueue DispatcherQueue { get => Main.DispatcherQueue; }
+        public bool StartMinimized { get; set; } = false;
+        public bool AutoTrack { get; set; } = false;
 
-        private Window? _window;
+        new static public App Current => (App)Application.Current;
+
+
         public App()
         {
 
             ObSharpLogger.LogAction = Log;
+#if DEBUG
             AttachConsole(); // Optional debug console
-
+#endif
             string? userHome = Environment.GetEnvironmentVariable("HOME");
             if (string.IsNullOrEmpty(userHome))
             {
@@ -95,11 +109,82 @@ namespace CPRTouchVision
         /// Invoked when the application is launched.
         /// </summary>
         /// <param name="args">Details about the launch request and process.</param>
-        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override async Task OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-;
-            _window = new MainWindow();
-            _window.Activate();
+            var instance = AppInstance.FindOrRegisterInstanceForKey("cpr-touch-vision");
+
+            if (!instance.IsCurrentInstance)
+            {
+                instance.RedirectActivationTo();
+                //AppInstance.GetInstances()[0].RedirectActivationTo(instance);
+                Environment.Exit(0);
+                return;
+            }
+
+            string? startCommand = null;
+
+            if (AppInstance.GetActivatedEventArgs() is IActivatedEventArgs activatedArgs)
+            {
+                if (activatedArgs.Kind == ActivationKind.Protocol && activatedArgs is ProtocolActivatedEventArgs protocolArgs)
+                {
+                    StartMinimized = true;
+                    startCommand = protocolArgs.Uri.Host;
+
+                    switch (startCommand)
+                    {
+                        case "start":
+                            AutoTrack = true;
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+
+            if (!IsFirstInstance())
+            {
+                ForwardStartCommand(startCommand);
+                return;
+            }
+
+            var init = new InitWindow();
+            init.CenterOnScreen();
+
+            if (StartMinimized)
+                init.ActivateMinimized();
+            else
+                init.Activate();           
+        }
+
+       
+
+        public void Setup()
+        {
+            Main = new MainWindow();
+            Main.CenterOnScreen();
+            Main.SetIcon("Assets/favicon.ico");
+
+            if (StartMinimized)
+                Main.ActivateMinimized();
+            else
+                Main.Activate();
+        }
+
+        private bool IsFirstInstance()
+        {
+            return Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName).Length == 1;
+        }
+
+        private async void ForwardStartCommand(string? startCommand)
+        {
+            if (startCommand != null)
+            {
+                var client = new PipeClient(PipeName.TouchVision);
+                await client.Connect();
+                await client.SendMessage(startCommand);
+            }
+
+            Environment.Exit(0);
         }
 
         private void LogUnhandled(string source, Exception? ex)

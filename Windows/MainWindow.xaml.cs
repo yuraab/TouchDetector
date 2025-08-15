@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Input;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
 using System;
-
+using Windows.System;
 using System.Linq;
 using WinUIEx;
 
@@ -26,6 +26,7 @@ namespace CPRTouchVision
 
         public MainWindow()
         {
+            ExtendsContentIntoTitleBar = true;
             _ = _manager.LoadConfig();
             InitializeComponent();
 
@@ -35,13 +36,12 @@ namespace CPRTouchVision
             _manager.Changed += OnManagerChanged;
             var ctrlZ = new KeyboardAccelerator()
             {
-                Key = Windows.System.VirtualKey.Z,
-                Modifiers = Windows.System.VirtualKeyModifiers.Control
+                Key = VirtualKey.Z,
+                Modifiers = VirtualKeyModifiers.Control
             };
             ctrlZ.Invoked += CtrlZ_Invoked;
 
             (this.Content as UIElement)?.KeyboardAccelerators.Add(ctrlZ);
-
         }
 
         private void CtrlZ_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -70,7 +70,7 @@ namespace CPRTouchVision
             switch (e)
             {
                 case TouchManagerEventType.NewFrame:
-                    Canvas.Invalidate();
+                    Canvas?.Invalidate();
                     break;
                 default:
                     break;
@@ -294,6 +294,11 @@ namespace CPRTouchVision
 
             }
         }
- 
+
+        private void OnGridLoaded(object sender, RoutedEventArgs e)
+        {
+            if (App.Current.AutoTrack)
+                DispatcherQueue.TryEnqueue(() => _manager.Start());
+        }
     }
 }
