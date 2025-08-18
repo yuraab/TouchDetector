@@ -30,6 +30,7 @@ using System.Net.Sockets;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.Arm;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -96,8 +97,8 @@ namespace CPRTouchVision.Models
         [ObservableProperty]
         bool _isTouchZone = false;
 
-        //[ObservableProperty]
-        //int _offset = 15;
+        [ObservableProperty]
+        bool _isCollectingFrames = false;
 
         [ObservableProperty]
         int _minOffset;
@@ -197,6 +198,12 @@ namespace CPRTouchVision.Models
         private ushort _maxWallDepth = 0;
         private ushort _minWalDepth = ushort.MaxValue;
         private bool _floorCamera; // camera is mounted on the floor/ceil
+
+        private WindowAccumulator? _winAccum = null;
+        private readonly object _collectLock = new();
+        private int _targetFrames = 30;        
+        private int _accCapacityPerPixel = 30;
+
 
         public TouchManager()
         {
@@ -421,6 +428,16 @@ namespace CPRTouchVision.Models
                 {
                     bitmap.Pixels = _depthVisualizer.Update(_depthData);
                 });
+
+                if (IsCollectingFrames)
+                {
+                    WindowAccumulator? acc = null;
+                    lock (_collectLock) acc = _winAccum;
+                    if (acc != null)
+                    {
+                        acc.AddFrame(_depthData);
+                    }
+                }
 
                 if (_isReadyReceiveNewCapture && _touchLoop != null)
                 {
@@ -928,13 +945,8 @@ namespace CPRTouchVision.Models
             d = -Vector3.Dot(normal, _calibrationPoints[0]);
         }
 
-        private async void WallPlane()
+        private (int, int, int, int) GetCalibrationWindow()
         {
-            if (IsFittingPlane)
-                return;
-
-            IsFittingPlane = true;
-
             int minX = int.MaxValue;
             int minY = int.MaxValue;
             int maxX = int.MinValue;
@@ -950,6 +962,19 @@ namespace CPRTouchVision.Models
 
             int w = maxX - minX;
             int h = maxY - minY;
+            return (minX, minY, w, h);
+        }
+
+        private async void WallPlane()
+        {
+            if (IsFittingPlane)
+                return;
+
+            IsFittingPlane = true;
+
+            int minX, minY, w, h;
+
+            (minX, minY, w, h) = GetCalibrationWindow();
             Vector3[] result = new Vector3[w * h];
             float minD = float.MaxValue, maxD = 0f;
             lock (_depthLock)
@@ -994,20 +1019,10 @@ namespace CPRTouchVision.Models
             float distance = numerator / denominator;
             _cameraPosition = new Vector3(distance, 0, 0); // ← Adjust axis if wall is along Z instead of X
 
-
-            await SaveConfig();
-            IsWallPlaneSet = true;
-            IsWallPlaneSet = true;
-            IsFittingPlane = false;
-            IsTouchZoneToggleEnabled = true;
-            Vector3 planeN = Vector3.Zero;
-            float dist = 0;
 #if DEBUG
             App.Log($"Camera position {_cameraPosition}");
             App.Log($"Wall normal: {_planeNormal}");
             App.Log($"Wall equation: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
-            
-            GetNormalizedPlane(out planeN, out dist);
 
             foreach (var point in _calibrationPoints)
             {
@@ -1015,13 +1030,122 @@ namespace CPRTouchVision.Models
                 var p = _calibration.Convert2DTo3D(new(point.X, point.Y), point.Z, CalibrationGeometry.Color, CalibrationGeometry.Depth);
                 Vector3 p3 = new Vector3(p.Value.X, p.Value.Y, p.Value.Z);
                 App.Log($"Checking if calibrating point on wall = {IsPointOnPlane(p3, _planeNormal, _planeD)}");
-                App.Log($"Checking if calibrating point on wall alt way = {IsPointOnPlane(p3, planeN, dist)}");
+                var p2 = _calibration.Convert3DTo2D(p.Value, CalibrationGeometry.Depth, CalibrationGeometry.Color);
+                App.Log($"Checking if calibrating point back to screen  {p2.Value}");
+            }
+
+            WallPlaneStat();
+
+            await SaveConfig();
+            IsWallPlaneSet = true;
+            IsWallPlaneSet = true;
+            IsFittingPlane = false;
+            IsTouchZoneToggleEnabled = true;
+#endif
+        }
+
+        private async void WallPlaneStat()
+        {
+            if (IsFittingPlane)
+                return;
+
+            IsFittingPlane = true;
+
+            int minX, minY, w, h;
+
+            (minX, minY, w, h) = GetCalibrationWindow();
+            
+            float minD = float.MaxValue, maxD = 0f;
+            _winAccum = new WindowAccumulator(minX, minY, w, h, _fw, _fw, _accCapacityPerPixel);
+            IsCollectingFrames = true;
+
+            await Task.Run(async () =>
+            {
+                // safeguard: максимум 2 секунды при 15 FPS → подстрой при необходимости
+                var sw = Stopwatch.StartNew();
+                while (true)
+                {
+                    WindowAccumulator? acc;
+                    lock (_collectLock) acc = _winAccum;
+                    if (acc != null && acc.FramesCollected >= _targetFrames) break;
+                    if (sw.ElapsedMilliseconds > 4000) break; // тайм-аут, чтобы не зависнуть
+                    await Task.Delay(5);
+                }
+            });
+
+            float[] winDepth = new float[w * h];
+            WindowAccumulator? ready;
+            lock (_collectLock) { ready = _winAccum; _winAccum = null; _isCollectingFrames = false; }
+            if (ready == null) return;
+
+            ready.BuildDepthMap(winDepth, useMedian: true);
+
+            var points = new List<Vector3>(winDepth.Length);
+
+            Parallel.For(0, winDepth.Length, i =>
+            {
+                int x = minX + i % w;
+                int y = minY + i / w;
+                int index = y * _fw + x;
+
+                float d = winDepth[i];
+                if (d <= 0) return;
+
+                var world = _calibration.Convert2DTo3D(new(x, y), d,
+                                CalibrationGeometry.Color, CalibrationGeometry.Depth);
+                if (world == null) return;
+
+                var point = new Vector3(
+                            world.Value.X,
+                            world.Value.Y,
+                            world.Value.Z
+                        );
+                lock (points) points.Add(point);
+
+            });
+
+#if DEBUG
+            App.Log($"Min/Max depth of wall {_minWalDepth}/{_maxWallDepth}");
+#endif
+
+            float planeD;
+            Vector3 planeNormal;
+            Vector3 cameraPosition;
+            (planeD, planeNormal) = await Task.Run(() => FitPlaneSVD2(points.ToArray()));
+
+            float numerator = MathF.Abs(Vector3.Dot(_planeNormal, Vector3.Zero) + _planeD);
+            float denominator = planeNormal.Length();
+
+            if (denominator == 0)
+                throw new ArgumentException("The wall plane normal cannot be a zero vector.");
+
+            float distance = numerator / denominator;
+            cameraPosition = new Vector3(distance, 0, 0); // ← Adjust axis if wall is along Z instead of X
+
+#if DEBUG
+            App.Log($"Camera position {cameraPosition}");
+            App.Log($"Wall normal: {planeNormal}");
+            App.Log($"Wall equation: {planeNormal.X:F4}x + {planeNormal.Y:F4}y + {planeNormal.Z:F4}z + {planeD:F4} = 0");
+
+
+            foreach (var point in _calibrationPoints)
+            {
+                //SKPoint p2 = new(point.X, point.Y);
+                var p = _calibration.Convert2DTo3D(new(point.X, point.Y), point.Z, CalibrationGeometry.Color, CalibrationGeometry.Depth);
+                Vector3 p3 = new Vector3(p.Value.X, p.Value.Y, p.Value.Z);
+                App.Log($"Checking if calibrating point on wall = {IsPointOnPlane(p3, _planeNormal, _planeD)}");
                 var p2 = _calibration.Convert3DTo2D(p.Value, CalibrationGeometry.Depth, CalibrationGeometry.Color);
                 App.Log($"Checking if calibrating point back to screen  {p2.Value}");
             }
 #endif
+            /*
+            await SaveConfig();
+            IsWallPlaneSet = true;
+            IsWallPlaneSet = true;
+            IsFittingPlane = false;
+            IsTouchZoneToggleEnabled = true;
+            */
         }
-
 
 
 
