@@ -950,7 +950,7 @@ namespace CPRTouchVision.Models
 
             int w = maxX - minX;
             int h = maxY - minY;
-            DepthPoint[] result = new DepthPoint[w * h];
+            Vector3[] result = new Vector3[w * h];
             float minD = float.MaxValue, maxD = 0f;
             lock (_depthLock)
             {
@@ -966,22 +966,20 @@ namespace CPRTouchVision.Models
                     {
                         if (d > maxD) maxD = d;
                         if (d < minD) minD = d;
-                        result[i] = DepthPoint.From(
-                            x,
-                            y,
+                        result[i] = new Vector3(
                             world.Value.X,
                             world.Value.Y,
                             world.Value.Z
                         );
                     }
                     else
-                        result[i] = DepthPoint.Empty;
+                        result[i] = new Vector3(0f, 0f, 0f);
                 });
             }
 
             _minWalDepth = (ushort)minD;
             _maxWallDepth = (ushort)maxD;
-            var points = result.Where(p => !p.IsEmpty).ToArray();
+            var points = result.Where(p => !p.IsZero()).ToArray();
 #if DEBUG
             App.Log($"Min/Max depth of wall {_minWalDepth}/{_maxWallDepth}");
 #endif
@@ -1024,7 +1022,10 @@ namespace CPRTouchVision.Models
 #endif
         }
 
-        private (float, Vector3) FitPlaneSVD2(DepthPoint[] points)
+
+
+
+        private (float, Vector3) FitPlaneSVD2(Vector3[] points)
         {
             int count = points.Length;
 
@@ -1044,7 +1045,7 @@ namespace CPRTouchVision.Models
                 () => new float[3, 3],
                 (point, state, local) =>
                 {
-                    var relative = point.World - centroid;
+                    var relative = point - centroid;
 
                     local[0, 0] += relative.X * relative.X;
                     local[0, 1] += relative.X * relative.Y;
@@ -1329,6 +1330,10 @@ namespace CPRTouchVision.Models
 
     public static class Extensions
     {
+        public static bool IsZero(this Vector3 p)
+        {
+            return p.X == 0f && p.Y == 0f && p.Z == 0f;
+        }
         public static SKPoint ToSKPoint(this Vector3 point)
         {
             return new SKPoint(point.X, point.Y);
