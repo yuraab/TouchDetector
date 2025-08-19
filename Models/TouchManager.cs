@@ -8,6 +8,7 @@ using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OBSharp;
@@ -146,6 +147,9 @@ namespace CPRTouchVision.Models
         private TouchVolume _detectableSpace;
         public TouchVolume DetectableSpace => _detectableSpace;
 
+        private List<Touch2DCluster>? _exclusionZones;
+        public Touch2DCluster[]? ExclusionZones => _exclusionZones?.ToArray();
+
         private System.Numerics.Quaternion _cameraRotation = System.Numerics.Quaternion.Identity;
         private DepthVisualizer _depthVisualizer;
         public readonly object Lock = new object();
@@ -199,7 +203,7 @@ namespace CPRTouchVision.Models
         public const int TouchZonePointsCount = 4;
         private bool _isReadyReceiveNewCapture = false;
         private IntPtr _noiseFilter;
-        private ushort _maxWallDepth = 0;
+        private ushort _maxWallDepth = 1;
         private ushort _minWalDepth = ushort.MaxValue;
         private bool _floorCamera; // camera is mounted on the floor/ceil
 
@@ -287,7 +291,7 @@ namespace CPRTouchVision.Models
                                                 _fw, _fh, _calibration
                                                );
 
-            _touchLoop = new(_detectableSpace, _calibration);
+            _touchLoop = new(_detectableSpace, _calibration, _exclusionZones);
             _touchLoop.TouchFrameReady += OnTouchFrameReady;
             _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
             _touchLoop.ReadyForNewImage += OnReadyForNewImage;
@@ -751,6 +755,7 @@ namespace CPRTouchVision.Models
                     GameScreenWidth = config.GameScreenWidth ?? _defaultGameScreenWidth;
                     GameScreenHeight = config.GameScreenHeight ?? _defaultGameScreenHeight;
                     _floorCamera = config.FloorCamera ?? true;
+                    _exclusionZones = (config.ExclusionZones != null && config.ExclusionZones.Length > 0) ? config.ExclusionZones.ToList() : null;
                 }
             }
             else
@@ -787,7 +792,8 @@ namespace CPRTouchVision.Models
                 TouchZonePoints,
                 _cameraPosition,
                 _cameraRotation.IsIdentity ? null : _cameraRotation,
-                _floorCamera
+                _floorCamera,
+                ExclusionZones
             );
             var json = JsonConvert.SerializeObject(config) ?? "";
 #if DEBUG
@@ -1165,14 +1171,42 @@ namespace CPRTouchVision.Models
                 App.Log($"Checking if calibrating point back to screen  {p2.Value}");
             }
 #endif
+            _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
 
             await SaveConfig();
-            IsWallPlaneSet = true;
             IsWallPlaneSet = true;
             IsFittingPlane = false;
             IsTouchZoneToggleEnabled = true;
 
         }
+
+        private List<Touch2DCluster> DetectLedges(
+            List<Vector3> points, 
+            Vector3 planeNormal,
+            float planeDistance,
+            int minOffset=10, int maxOffset=50)
+        {
+            var clusters = new List<Touch2DCluster>();
+            if (points.Count < 4)
+                return clusters;
+
+            TouchVolume ledgeVolume = new TouchVolume(
+                planeNormal, planeDistance,
+                minOffset, maxOffset, // capture near-plane protrusions
+                TouchZonePoints,
+                _minWalDepth, _minWalDepth, 
+                _fw, _fh, 
+                _calibration);
+
+            var ledgePoints = ledgeVolume.ExtractProjectedPointsInsideVolumeFromList(points);
+
+            var ledgeClusterManager = new Touch2DClusterManager();
+
+            clusters = ledgeClusterManager.DetectClusters(ledgePoints);
+
+            return clusters;
+        }
+
 
         private (float, Vector3) FitPlaneSVD2(Vector3[] points)
         {
@@ -1463,13 +1497,13 @@ namespace CPRTouchVision.Models
         }
 
         public static string CONFIG_SUB_FOLDER = "CPRTouchVision";
-        public static string CONFIG_FOLDER => Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
-        public static string CONFIG_PATH => Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER, "config.json");
+        public static string CONFIG_FOLDER => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
+        public static string CONFIG_PATH => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER, "config.json");
         public static string CommonFolderPath
         {
             get
             {
-                var result = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "CPR Soft");
+                var result = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "CPR Soft");
 
                 if (!Directory.Exists(result))
                 {

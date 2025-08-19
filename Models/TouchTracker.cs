@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using OB = OBSharp;
 
@@ -11,6 +12,7 @@ namespace CPRTouchVision.Models
     {
         private readonly TouchVolume _volume;
         private readonly Touch2DClusterManager _clusterManager;
+        private readonly ExclusionZoneManager? _exclusionManager;
 
         private Thread _thread;
         private readonly AutoResetEvent _imageAvailable = new(false);    // Wait for image
@@ -25,12 +27,26 @@ namespace CPRTouchVision.Models
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
-        public TouchTracker_(TouchVolume volume, Calibration calibration, int maxQueueSize = 5)
+        public TouchTracker_(
+            TouchVolume volume, 
+            Calibration calibration,
+            List<Touch2DCluster> exclusionZones = null,
+            int maxQueueSize = 5)
         {
             _volume = volume;
             //_calibration = calibration;
 
             _clusterManager = new Touch2DClusterManager();
+
+            if (exclusionZones == null || exclusionZones.Count == 0)
+            {
+                _exclusionManager = null;
+            }
+            else
+            {
+                _exclusionManager = new ExclusionZoneManager();
+                _exclusionManager.AddZones(exclusionZones);
+            }
 
             _thread = new Thread(ProcessLoop)
             {
@@ -155,8 +171,13 @@ namespace CPRTouchVision.Models
                 return;
             }
             clusters = _clusterManager.DetectClusters(points);
+
             if (clusters?.Count > 0)
             {
+                if (_exclusionManager != null)
+                {
+                    clusters = _exclusionManager.FilterClusters(clusters).ToList();
+                }
                 foreach (var cluster in clusters)
                 {
                     cluster.NormalizedCenter = _volume.GetHomographyCoordinatesFrom2D(cluster.Center);
@@ -169,11 +190,11 @@ namespace CPRTouchVision.Models
 
         private List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage)
         {
-            return _volume.Extract3DPointsInsideVolume(depthImage);
+            return _volume.Extract3DPointsInsideVolumeFromImage(depthImage);
         }
         private List<OB.Float2> Extract2DPointsInsideVolume(ushort[] depthImage)
         {
-            return _volume.ExtractProjectedPointsInsideVolume(depthImage);
+            return _volume.ExtractProjectedPointsInsideVolumeFromImage(depthImage);
         }
         public void Stop()
         {

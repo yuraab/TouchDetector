@@ -15,10 +15,11 @@ namespace CPRTouchVision.Models
         public Vector3? PlaneNormal;
         public DepthPoint? TouchZoneCorner1;
         public DepthPoint? TouchZoneCorner2;
-        public DepthPoint[] TouchZoneCorners;
+        public DepthPoint[]? TouchZoneCorners;
         public Vector3? CameraPosition;
         public Quaternion? CameraRotation;
         public bool? FloorCamera;
+        public Touch2DCluster[]? ExclusionZones;
 
         public Config(
             int? gameScreenWidth,
@@ -34,7 +35,8 @@ namespace CPRTouchVision.Models
             DepthPoint[] touchZoneCorners,
             Vector3? cameraPosition,
             Quaternion? cameraRotation,
-            bool? floorCamera
+            bool? floorCamera,
+            Touch2DCluster[]? exclusionZones
         )
 
         {
@@ -52,6 +54,7 @@ namespace CPRTouchVision.Models
             CameraPosition = cameraPosition;
             CameraRotation = cameraRotation;
             FloorCamera = floorCamera;
+            ExclusionZones = exclusionZones;
         }
 
     }

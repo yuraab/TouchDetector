@@ -557,6 +557,30 @@ namespace CPRTouchVision.Models
             }
         }
 
+        public bool IsPointInVolume(Vector3 point, out Vector2? point2D)
+        {
+            point2D = new Vector2?();
+            float distanceToPlane = Vector3.Dot(WallNormal, point) + WallDistance;
+            if (distanceToPlane > MaxOffset || distanceToPlane < MinOffset)
+                return false;
+            // Get 3D projected point
+            Vector3 projected = new Vector3(
+                point.X - WallNormal.X * distanceToPlane,
+                point.Y - WallNormal.Y * distanceToPlane,
+                point.Z - WallNormal.Z * distanceToPlane
+            ) - _origin;
+
+            // Get 2D projected point
+            // Project onto u and v to get 2D coordinates
+            float x = Vector3.Dot(projected, _uAxis);
+            float y = Vector3.Dot(projected, _vAxis);
+
+            point2D = new Vector2(x, y);
+
+            return PointInTriangle(point2D!.Value, Polygon2D[0], Polygon2D[1], Polygon2D[2], _triangleArea012) ||
+                   PointInTriangle(point2D!.Value, Polygon2D[0], Polygon2D[2], Polygon2D[3], _triangleArea023);
+        }
+
         public bool IsPointInVolume(OB.Float3 point, out Vector2? point2D)
         {
             point2D = new Vector2?();
@@ -612,7 +636,38 @@ namespace CPRTouchVision.Models
             return a.X * b.X + a.Y * b.Y + a.Z * b.Z;
         }
 
-        public List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage)
+        public List<Vector3> Extract3DPointsInsideVolumeFromList(List<Vector3> points)
+        {
+            List<Vector3> result;
+            lock (_depthLock)
+            {
+                result = new List<Vector3>(points.Count);
+                foreach (var point in points)
+                {
+                    if (IsPointInVolume(point, out _))
+                        result.Add(point);
+                }
+            }
+            return result;
+        }
+
+        public List<Float2> ExtractProjectedPointsInsideVolumeFromList(List<Vector3> points)
+        {
+            List<Float2> result;
+            lock (_depthLock)
+            {
+                result = new List<Float2>(points.Count);
+                foreach (var point in points)
+                {
+                    var point2D = new Vector2?();
+                    if (IsPointInVolume(point, out point2D) && point2D != null)
+                        result.Add(new(point2D.Value.X, point2D.Value.Y));
+                }
+            }
+            return result;
+
+        }
+        public List<Float3> Extract3DPointsInsideVolumeFromImage(ushort[] depthImage)
         {
             var result = new List<OB.Float3>();
             int step = 2;
@@ -654,7 +709,7 @@ namespace CPRTouchVision.Models
 
             return result;
         }
-        public List<Float2> ExtractProjectedPointsInsideVolume(ushort[] depthImage)
+        public List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage)
         {
             var result = new List<OB.Float2>();
             int step = 2;

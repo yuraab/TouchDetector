@@ -46,9 +46,9 @@ namespace CPRTouchVision.Models
                         outliers.Add(p);
                 }
 
-                if (best == null || inliers.Count > best.Inliers.Count)
+                if (best == null || inliers.Count > best.InliersCount)
                 {
-                    plane.Inliers = inliers;
+                    plane.InliersCount = inliers.Count;
                     plane.Outliers = outliers;
                     best = plane;
                 }
@@ -99,8 +99,9 @@ namespace CPRTouchVision.Models
     {
         public Vector3 Normal { get; set; }
         public float D { get; set; }
-        public List<Vector3> Inliers { get; set; } = new();
+        //public List<Vector3> Inliers { get; set; } = new();
         public List<Vector3> Outliers { get; set; } = new();
+        public int InliersCount { get; set; }
 
         public float DistanceTo(Vector3 p)
         {
@@ -110,7 +111,7 @@ namespace CPRTouchVision.Models
         public override string ToString()
         {
             return $"Plane equation: {Normal.X:F4}x + {Normal.Y:F4}y + {Normal.Z:F4}z + {D:F4} = 0 " +
-                   $"(Inliers: {Inliers.Count}, Outliers: {Outliers.Count})";
+                   $"(Inliers: {InliersCount}, Outliers: {Outliers.Count})";
         }
     }
 }
