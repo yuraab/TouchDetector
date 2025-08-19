@@ -70,7 +70,7 @@
                        Grid.Column="1"/>
                 </Grid>
 
-                <TextBlock Text="Select 2 points to define a rectangle area for interactions."
+                <TextBlock Text="Select 4 points to define a rectangle area for interactions."
                    Style="{ThemeResource CaptionTextBlockStyle}"
                    Margin="0 0 0 0" />
 

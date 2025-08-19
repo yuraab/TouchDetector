@@ -51,50 +51,49 @@ namespace CPRTouchVision.Models
     }
 
     public sealed class WindowAccumulator
-{
-    public readonly int MinX, MinY, W, H, frameW, frameH;
-    private readonly object _depthLock = new object();
-    private readonly DepthRingBuffer[] _cells;
-
-    public int CapacityPerPixel { get; }
-    public int FramesCollected { get; private set; }
-
-    public WindowAccumulator(int minX, int minY, int w, int h, int fW, int fH, int capacityPerPixel)
     {
-        MinX = minX;
-        MinY = minY;
-        W = w;
-        H = h;
-        frameW = fW;
-        frameH = fH;
-        CapacityPerPixel = capacityPerPixel;
-        _cells = new DepthRingBuffer[W * H];
-        for (int i = 0; i < _cells.Length; i++) _cells[i] = new DepthRingBuffer(capacityPerPixel);
-    }
+        public readonly int MinX, MinY, W, H, frameW, frameH;
+        private readonly object _depthLock = new object();
+        private readonly DepthRingBuffer[] _cells;
 
-    public void AddFrame(ushort[] depthData)
-    {
-        lock (_depthLock)
+        public int CapacityPerPixel { get; }
+        public int FramesCollected { get; private set; }
+
+        public WindowAccumulator(int minX, int minY, int w, int h, int fW, int fH, int capacityPerPixel)
         {
-            Parallel.For(0, W * H, (i) =>
-            {
-                int x = MinX + i % W;
-                int y = MinY + i / H;
-                int index = y * frameW + x;
-                _cells[i].AddByRing(depthData[index]);
-            });  
+            MinX = minX;
+            MinY = minY;
+            W = w;
+            H = h;
+            frameW = fW;
+            frameH = fH;
+            CapacityPerPixel = capacityPerPixel;
+            _cells = new DepthRingBuffer[W * H];
+            for (int i = 0; i < _cells.Length; i++) _cells[i] = new DepthRingBuffer(capacityPerPixel);
         }
-        FramesCollected++;
-    }
 
-    // Итоговая «чистая» глубина окна
-    public void BuildDepthMap(float[] outDepth, bool useMedian, float trimmedFrac = 0.2f)
-    {
-        // outDepth.Length == W*H
-        for (int i = 0; i < _cells.Length; i++)
-            outDepth[i] = useMedian ? _cells[i].Median() : _cells[i].TrimmedMean(trimmedFrac);
-    }
-}
+        public void AddFrame(ushort[] depthData)
+        {
+            lock (_depthLock)
+            {
+                Parallel.For(0, W * H, (i) =>
+                {
+                    int x = MinX + i % W;
+                    int y = MinY + i / W;
+                    int index = y * frameW + x;
+                    _cells[i].AddByRing(depthData[index]);
+                });  
+            }
+            FramesCollected++;
+        }
 
+        // Итоговая «чистая» глубина окна
+        public void BuildDepthMap(float[] outDepth, bool useMedian, float trimmedFrac = 0.2f)
+        {
+            // outDepth.Length == W*H
+            for (int i = 0; i < _cells.Length; i++)
+                outDepth[i] = useMedian ? _cells[i].Median() : _cells[i].TrimmedMean(trimmedFrac);
+        }
+    }
 
 }
