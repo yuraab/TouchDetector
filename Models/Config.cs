@@ -28,8 +28,6 @@ namespace CPRTouchVision.Models
             ushort? maxWallDepth,
             float? planeD,
             Vector3? planeNormal,
-            //DepthPoint? touchZoneCorner1,
-            //DepthPoint? touchZoneCorner2,
             DepthPoint[] touchZoneCorners,
             Vector3? cameraPosition,
             Quaternion? cameraRotation,
@@ -46,8 +44,6 @@ namespace CPRTouchVision.Models
             MaxWallDepth = maxWallDepth;
             PlaneD = planeD;
             PlaneNormal = planeNormal;
-            //TouchZoneCorner1 = touchZoneCorner1;
-            //TouchZoneCorner2 = touchZoneCorner2;
             TouchZoneCorners = touchZoneCorners;
             CameraPosition = cameraPosition;
             CameraRotation = cameraRotation;

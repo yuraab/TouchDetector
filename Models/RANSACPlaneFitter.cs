@@ -99,7 +99,6 @@ namespace CPRTouchVision.Models
     {
         public Vector3 Normal { get; set; }
         public float D { get; set; }
-        //public List<Vector3> Inliers { get; set; } = new();
         public List<Vector3> Outliers { get; set; } = new();
         public int InliersCount { get; set; }
 

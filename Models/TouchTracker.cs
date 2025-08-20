@@ -33,8 +33,7 @@ namespace CPRTouchVision.Models
             List<ExclusionZone> exclusionZones = null,
             int maxQueueSize = 5)
         {
-            _volume = volume;
-            //_calibration = calibration;
+            _volume = volume;;
 
             _clusterManager = new Touch2DClusterManager();
 
