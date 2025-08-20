@@ -97,7 +97,7 @@ namespace CPRTouchVision.Models
         bool _isFittingPlane = false;
 
         [ObservableProperty]
-        bool _isTouchZone = false;
+        bool _isTouchZoneDefining = false;
 
         [ObservableProperty]
         bool _isCollectingFrames = false;
@@ -132,7 +132,6 @@ namespace CPRTouchVision.Models
 
         private ushort[] _depthData = [];
 
-        private List<Vector3> _calibrationPoints = new();
         private List<DepthPoint> _touchZonePoints = new();
 
         private List<TouchEvent> _touches = new();
@@ -184,7 +183,6 @@ namespace CPRTouchVision.Models
         public Vector3 PlaneNormal => _planeNormal;
         public Vector3 CameraPosition => _cameraPosition;
 
-        public Vector3[] CalibrationPoints => _calibrationPoints.ToArray();
         public DepthPoint[] TouchZonePoints => _touchZonePoints.ToArray();
 
         public EventHandler<TouchManagerEventType>? Changed;
@@ -226,8 +224,6 @@ namespace CPRTouchVision.Models
 
         public void Undo()
         {
-            if (IsCalibrating && _calibrationPoints.Count > 0)
-                _calibrationPoints.RemoveAt(_calibrationPoints.Count - 1);
             if (IsSelectingTouchZone && _touchZonePoints.Count > 0)
                 _touchZonePoints.RemoveAt(_touchZonePoints.Count - 1);
         }
@@ -376,8 +372,8 @@ namespace CPRTouchVision.Models
                 IsCameraPositionDefined = true;
 
                 // Redo calibration if position of camera was changed
-                // Make sure StartCalibration runs on UI thread
-                UIDispatcherQueue.TryEnqueue(() => StartCalibration()); 
+                // Make sure StartDefineZone runs on UI thread
+                UIDispatcherQueue.TryEnqueue(() => StartDefineZone()); 
             }
             else
             {
@@ -592,13 +588,11 @@ namespace CPRTouchVision.Models
 
         private void PerformCalibration()
         {
-            if (IsCalibrating)
+            if (IsSelectingTouchZone || IsTouchZoneDefining )
                 return;
 
-            _calibrationPoints.Clear();
             IsWallPlaneSet = false;
-            IsCalibrating = true;
-            IsSelectingTouchZone = false;
+            IsSelectingTouchZone = true;
             ResetTouchZone();
         }
 
@@ -725,35 +719,6 @@ namespace CPRTouchVision.Models
             await File.WriteAllBytesAsync(CONFIG_PATH, data);
         }
 
-        public void AddCalibrationPoint(SKPoint point)
-        {
-            if (!IsCalibrating)
-                return;
-
-            var d = GetDepth(point);
-#if DEBUG
-            App.Log($"Depth {d}");
-#endif
-
-            if (d > 0 && _calibrationPoints.Count < CalibrationPointsCount)
-            {
-                _calibrationPoints.Add(new(point.X, point.Y, d));
-#if DEBUG
-                App.Log($"Calibration point count {_calibrationPoints.Count} now");
-#endif
-                if (_calibrationPoints.Count == CalibrationPointsCount)
-                {
-                    IsCalibrating = false;
-#if DEBUG
-                    App.Log("Calibration done!");
-#endif
-                    //FitPlane();
-                    WallPlane();
-                }
-            }
-        }
-
-
         private bool IsPointOnPlane(System.Numerics.Vector3 point, System.Numerics.Vector3 planeNormal, float planeDistance)
         {
             const float epsilon = 10;
@@ -831,10 +796,13 @@ namespace CPRTouchVision.Models
                 IsSelectingTouchZone = false;
                 
                 IsFittingPlane = false;
-                WallPlaneStat();
+                await WallPlaneStat();
                 await SaveConfig();
-                IsSelectingTouchZone = false;
+
+                //IsWallPlaneSet = true;
                 IsTouchZoneSet = true;
+                //IsTouchZoneToggleEnabled = true;
+
                 CheckIsReadyRunTouchLoop();
             }
 
@@ -882,22 +850,6 @@ namespace CPRTouchVision.Models
             ).ToList();
         }
 
-        private void GetNormalizedPlane(out Vector3 normal, out float d)
-        {
-            // Step 1: Compute vectors in the plane
-            Vector3 vector1 = _calibrationPoints[1] - _calibrationPoints[0];
-            Vector3 vector2 = _calibrationPoints[2] - _calibrationPoints[0];
-
-            // Step 2: Compute the normal vector using cross product
-            normal = Vector3.Cross(vector1, vector2);
-
-            // Step 3: Normalize the normal vector
-            normal = Vector3.Normalize(normal);
-
-            // Step 4: Compute d using the plane equation
-            d = -Vector3.Dot(normal, _calibrationPoints[0]);
-        }
-
         private (int, int, int, int) GetCalibrationWindow(List<Vector3> points)
         {
             int minX = int.MaxValue;
@@ -927,7 +879,7 @@ namespace CPRTouchVision.Models
 
             int minX, minY, w, h;
             //var calibrationPoints = _calibrationPoints.Select(p => new Vector2(p.X, p.Y)).ToList();
-            (minX, minY, w, h) = GetCalibrationWindow(_calibrationPoints);
+            (minX, minY, w, h) = GetCalibrationWindow(_touchZonePoints.Select(p => p.World).ToList());
             Vector3[] result = new Vector3[w * h];
             float minD = float.MaxValue, maxD = 0f;
             lock (_depthLock)
@@ -977,7 +929,7 @@ namespace CPRTouchVision.Models
             App.Log($"Wall normal: {_planeNormal}");
             App.Log($"Wall equation: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
 
-            foreach (var point in _calibrationPoints)
+            foreach (var point in _touchZonePoints)
             {
                 //SKPoint p2 = new(point.X, point.Y);
                 var p = _calibration.Convert2DTo3D(new(point.X, point.Y), point.Z, CalibrationGeometry.Color, CalibrationGeometry.Depth);
@@ -998,12 +950,12 @@ namespace CPRTouchVision.Models
 #endif
         }
 
-        private async void WallPlaneStat()
+        private async Task WallPlaneStat()
         {
-            if (IsFittingPlane)
+            if (IsTouchZoneDefining)
                 return;
 
-            IsFittingPlane = true;
+            IsTouchZoneDefining = true;
             IsTouchZoneSet = false;
 
             int minX, minY, w, h;
@@ -1096,12 +1048,9 @@ namespace CPRTouchVision.Models
 #endif
             _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
 
-            await SaveConfig();
-            IsWallPlaneSet = true;
+            //await SaveConfig(); 
+            IsTouchZoneDefining = false;
             IsTouchZoneSet = true;
-            IsFittingPlane = false;
-            IsTouchZoneToggleEnabled = true;
-
         }
 
         private List<ExclusionZone>? DetectLedges(
@@ -1265,10 +1214,11 @@ namespace CPRTouchVision.Models
         partial void OnIsRunningChanged(bool value)
         {
             ToggleTitle = IsRunning ? "Stop" : "Start";
-            IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
+            //IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
             // Enable the touch zone toggle only when the app is running, the wall plane is defined,
             // we are not currently selecting the touch zone, and we are not fitting a plane.
-            IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
+            //IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
+            IsTouchZoneToggleEnabled = IsWallPlaneSet && !IsSelectingTouchZone && !IsTouchZoneDefining;
             CheckIsReadyRunTouchLoop();
         }
 
@@ -1290,40 +1240,18 @@ namespace CPRTouchVision.Models
 
         }
 
-        partial void OnIsCalibratingChanged(bool value)
+        partial void OnIsTouchZoneDefiningChanged(bool value) 
         {
-            IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
-            IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
-            if (_captureLoop != null)
-                _captureLoop.ShouldCollectIMU = IsCalibrating;
-            CheckIsReadyRunTouchLoop();
-        }
-
-        partial void OnIsFittingPlaneChanged(bool value)
-        {
-            IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
-            IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
-            if (IsFittingPlane)
-            {
-                WallPlaneStatus = "Defining...";
-                WallPlaneForeground = new SolidColorBrush(Colors.DarkGray);
-            }
-            else
-            {
-                WallPlaneStatus = IsWallPlaneSet ? "Set" : "Not Set";
-                WallPlaneForeground = new SolidColorBrush(IsWallPlaneSet ? Colors.Green : Colors.OrangeRed);
-            }
-            CheckIsReadyRunTouchLoop();
-        }
-
-        partial void OnIsTouchZoneChanged(bool value) 
-        {
-            IsTouchZoneToggleEnabled = IsRunning && !IsCalibrating && !IsTouchZone;
-
-            if (IsTouchZone)
+            IsTouchZoneToggleEnabled = IsRunning && !IsSelectingTouchZone && !IsTouchZoneDefining;
+            if (IsTouchZoneDefining)
             {
                 TouchZoneStatus = "Defining...";
                 TouchZoneForeground = new SolidColorBrush(Colors.DarkGray);
+            }
+            else
+            {
+                TouchZoneStatus = IsWallPlaneSet ? "Set" : "Not Set";
+                TouchZoneForeground = new SolidColorBrush(IsWallPlaneSet ? Colors.Green : Colors.OrangeRed);
             }
             CheckIsReadyRunTouchLoop();
         }

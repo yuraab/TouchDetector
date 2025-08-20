@@ -55,11 +55,6 @@ namespace CPRTouchVision
             _manager.Toggle();
         }
 
-        private void OnDefineWallPlaneClicked(object? sender, RoutedEventArgs e)
-        {
-            _manager.StartCalibration();
-        }
-
         private void OnDefineTouchZoneClicked(object? sender, RoutedEventArgs e)
         {
             _manager.StartDefineZone();
@@ -91,10 +86,7 @@ namespace CPRTouchVision
             _manager.ColorBitmap.Draw(canvas, true);
             _manager.DepthBitmap.Draw(canvas);
 
-            if (_manager.IsCalibrating || !_manager.IsWallPlaneSet)
-                DrawCalibration(canvas);
-
-            else if (_manager.IsTouchZoneSet)
+            if (_manager.IsTouchZoneSet)
             {
                 DrawTouchZone(canvas);
             }
@@ -119,49 +111,6 @@ namespace CPRTouchVision
             {
                 var radius = touch.ScreenRadius < 10 ? 10 : touch.ScreenRadius;
                 canvas.DrawCircle(touch.X, touch.Y, radius, paint);
-            }
-        }
-
-        private void DrawCalibration(SKCanvas canvas)
-        {
-            var paint = new SKPaint()
-            {
-                Style = SKPaintStyle.Fill,
-                Color = SKColors.GreenYellow,
-                IsAntialias = true
-            };
-
-            var path = new SKPath();
-
-            for (int i = 0; i < _manager.CalibrationPoints.Length; i++)
-            {
-                var point = _manager.CalibrationPoints[i].ToSKPoint();
-
-                if (i == 0)
-                    path.MoveTo(point);
-                else if (i == TouchManager.CalibrationPointsCount - 1)
-                {
-                    path.LineTo(point);
-                    path.Close();
-                }
-                else
-                    path.LineTo(point);
-
-                canvas.DrawCircle(point, 6, paint);
-            }
-
-            if (_manager.CalibrationPoints.Length == TouchManager.CalibrationPointsCount)
-            {
-                paint.Color = SKColors.GreenYellow.WithAlpha(128);
-                canvas.DrawPath(path, paint);
-            }
-
-            if (!path.IsEmpty)
-            {
-                paint.Style = SKPaintStyle.Stroke;
-                paint.StrokeWidth = 3;
-                paint.Color = SKColors.GreenYellow;
-                canvas.DrawPath(path, paint);
             }
         }
 
@@ -248,10 +197,7 @@ namespace CPRTouchVision
                     IsAntialias = true
                 };
             // Calibration line
-            if (_manager.IsCalibrating && _manager.CalibrationPoints.Length > 0)
-                canvas.DrawLine(_manager.CalibrationPoints.Last().ToSKPoint(), _manager.Cursor, paint);
-
-            else if (_manager.IsSelectingTouchZone && (TouchManager.TouchZonePointsCount > _manager.TouchZonePoints.Length && _manager.TouchZonePoints.Length > 0))
+            if (_manager.IsSelectingTouchZone && (TouchManager.TouchZonePointsCount > _manager.TouchZonePoints.Length && _manager.TouchZonePoints.Length > 0))
             {
                 for (int i = 0; i < _manager.TouchZonePoints.Length - 1; i++)
                     canvas.DrawLine(_manager.TouchZonePoints[i].Screen, _manager.TouchZonePoints[i+1].Screen, paint);
@@ -283,11 +229,7 @@ namespace CPRTouchVision
                 var y = (int)(point.Position.Y * s / _ch * _manager.FH);
                 string message = $"point with x={x}, y={y}";
 
-                if (_manager.IsCalibrating)
-                {
-                    _manager.AddCalibrationPoint(new(x, y));
-                }
-                else if (_manager.IsSelectingTouchZone)
+                if (_manager.IsSelectingTouchZone)
                 {
                     _manager.AddTouchZonePoint(x, y);
                 }
