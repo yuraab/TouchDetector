@@ -12,7 +12,7 @@ namespace CPRTouchVision.Models
     {
         private readonly TouchVolume _volume;
         private readonly Touch2DClusterManager _clusterManager;
-        private readonly ExclusionZoneManager? _exclusionManager;
+        private readonly ExclusionZoneManager_? _exclusionManager;
 
         private Thread _thread;
         private readonly AutoResetEvent _imageAvailable = new(false);    // Wait for image
@@ -30,7 +30,7 @@ namespace CPRTouchVision.Models
         public TouchTracker_(
             TouchVolume volume, 
             Calibration calibration,
-            List<Touch2DCluster> exclusionZones = null,
+            List<ExclusionZone> exclusionZones = null,
             int maxQueueSize = 5)
         {
             _volume = volume;
@@ -44,7 +44,7 @@ namespace CPRTouchVision.Models
             }
             else
             {
-                _exclusionManager = new ExclusionZoneManager();
+                _exclusionManager = new ExclusionZoneManager_();
                 _exclusionManager.AddZones(exclusionZones);
             }
 
@@ -176,7 +176,7 @@ namespace CPRTouchVision.Models
             {
                 if (_exclusionManager != null)
                 {
-                    clusters = _exclusionManager.FilterClusters(clusters).ToList();
+                    clusters = _exclusionManager.FilterClusters(clusters);
                 }
                 foreach (var cluster in clusters)
                 {

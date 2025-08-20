@@ -52,7 +52,7 @@ namespace CPRTouchVision.Models
         public TouchLoop(
             TouchVolume volume, 
             Calibration calibration,
-            List<Touch2DCluster> exclusionZones = null,
+            List<ExclusionZone> exclusionZones = null,
             int maxRatePerSecond = 10)
         {
             _tracker = new TouchTracker_(volume, calibration, exclusionZones);  

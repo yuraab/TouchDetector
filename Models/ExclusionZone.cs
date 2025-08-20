@@ -34,7 +34,8 @@ namespace CPRTouchVision.Models
     {
         private readonly Dictionary<(int, int), List<ExclusionZone>> _grid = new();
         private readonly float _cellSize;
-
+        private readonly float _clusterMargin = 10f;
+        private readonly float _clusterMarginFactor = 1.1f;
         public ExclusionZoneManager(float cellSize = 50f) // tune based on touch scale
         {
             _cellSize = cellSize;
@@ -52,6 +53,22 @@ namespace CPRTouchVision.Models
             foreach (var c in clusters)
             {
                 var zone = new ExclusionZone(c.Center, c.Radius);
+                var cell = ToCell(zone.Center);
+
+                if (!_grid.TryGetValue(cell, out var list))
+                {
+                    list = new List<ExclusionZone>();
+                    _grid[cell] = list;
+                }
+
+                list.Add(zone);
+            }
+        }
+
+        public void AddZones(List<ExclusionZone> zones)
+        {
+            foreach (var zone in zones)
+            {
                 var cell = ToCell(zone.Center);
 
                 if (!_grid.TryGetValue(cell, out var list))
@@ -83,11 +100,16 @@ namespace CPRTouchVision.Models
             }
         }
 
-        public bool IsExcluded(Vector2 point)
+        public bool IsExcluded(Touch2DCluster cluster)
         {
-            foreach (var z in NearbyZones(point))
+            foreach (var z in NearbyZones(cluster.Center))
             {
-                if (z.Contains(point))
+                float dx = cluster.Center.X - z.Center.X;
+                float dy = cluster.Center.Y - z.Center.Y;
+                float dist = MathF.Sqrt(dx * dx + dy * dy);
+
+                // Exclude if cluster overlaps zone (with optional safety margin)
+                if (dist < z.Radius + Math.Max(cluster.Radius * _clusterMarginFactor, cluster.Radius + _clusterMargin))// safety margin
                     return true;
             }
             return false;
@@ -97,18 +119,63 @@ namespace CPRTouchVision.Models
         {
             foreach (var c in clusters)
             {
-                bool excluded = NearbyZones(c.Center)
-                    .Any(z => z.Overlaps(c));
-#if DEBUG
-                if (excluded)
-                    App.Log($"Cluster at {c.Center} is excluded");
-#endif
-                if (!excluded)
+                if (!IsExcluded(c))
                     yield return c;
             }
         }
     }
 
+    public class ExclusionZoneManager_
+    {
+        private readonly List<ExclusionZone> _zones;
+        private readonly float _cellSize;
+        private readonly float _clusterMargin = 10f;
+        private readonly float _clusterMarginFactor = 1.1f;
+        public ExclusionZoneManager_(List<ExclusionZone> zones)
+        {
+            _zones = zones;
+        }
+        public ExclusionZoneManager_()
+        {
+            _zones = new List<ExclusionZone> ();
+        }
 
+        public void AddZones(List<ExclusionZone>? zones)
+        {
+            if (zones == null || zones.Count == 0) return;
+            _zones.AddRange(zones);
+        }   
+        public void ClearZones() => _zones.Clear();
+        public List<Touch2DCluster> FilterClusters(List<Touch2DCluster> clusters)
+        {
 
+            if (_zones.Count == 0) return clusters;
+
+            List<Touch2DCluster> filtered = new List<Touch2DCluster>();
+
+            foreach (var cluster in clusters)
+            {
+                bool excluded = false;
+                foreach (var z in _zones)
+                {
+                    float dx = cluster.Center.X - z.Center.X;
+                    float dy = cluster.Center.Y - z.Center.Y;
+                    float dist = MathF.Sqrt(dx * dx + dy * dy);
+
+                    // Check for circle intersection
+                    if (dist < cluster.Radius + z.Radius + Math.Max(cluster.Radius * _clusterMarginFactor, cluster.Radius + _clusterMargin)) // optional: + safetyMargin
+                    {
+                        excluded = true;
+                        break; // no need to check other zones
+                    }
+                }
+
+                if (!excluded)
+                {
+                    filtered.Add(cluster);
+                }
+            }
+            return filtered;
+        }
+    }
 }
