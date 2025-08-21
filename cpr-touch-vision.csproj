@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>CPRTouchVision</RootNamespace>
@@ -12,7 +12,12 @@
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
+	  <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
   </PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)'=='Release'">
+		<DebugSymbols>false</DebugSymbols>
+		<DebugType>none</DebugType>
+	</PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\favicon.ico" />
     <None Remove="Assets\imgs\img-0.png" />
@@ -28,7 +33,6 @@
     <None Remove="Assets\svg\cpr-touch-vision-icon-light.svg" />
     <None Remove="Windows\InitWindow.xaml" />
   </ItemGroup>
-
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
@@ -37,11 +41,9 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
-
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
-
   <!--
     Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
     Tools extension to be activated for this project even if the Windows App SDK Nuget
@@ -65,13 +67,11 @@
     <PackageReference Include="System.Management" Version="9.0.7" />
     <PackageReference Include="System.Private.Uri" Version="4.3.2" />
     <PackageReference Include="WinUIEx" Version="2.6.0" />
-	  <PackageReference Include="DBSCAN" Version="3.0.0" />  
+    <PackageReference Include="DBSCAN" Version="3.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\cpr-lib\CPRLib.csproj" />
-    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj">
-      <Private>True</Private>
-    </ProjectReference>
+    <ProjectReference Include="..\cpr-lib-old\CPRLib.csproj" />
+    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="SharpOSC">
@@ -121,17 +121,14 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>
-
   <Target Name="CopyNativeDependencies" AfterTargets="Build">
-	<ItemGroup>
-	  <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.dll" />
-	  <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.onnx" />
-	</ItemGroup>
-
-	<Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
-	<Copy SourceFiles="@(OnnxFiles)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.dll" />
+      <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.onnx" />
+    </ItemGroup>
+    <Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OnnxFiles)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
   </Target>
-
   <!--
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
     Explorer "Package and Publish" context menu entry to be enabled for this project even if
@@ -140,7 +137,6 @@
   <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
     <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
   </PropertyGroup>
-
   <!-- Publish Properties -->
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
@@ -148,7 +144,15 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <PackageCertificateThumbprint>8BA23FD2B29647E1173AD5ECF52A5398C9A110CB</PackageCertificateThumbprint>
+    <PackageCertificateThumbprint>526B61533B2E1881D0EB9F7219DDF29C7D05F3B8</PackageCertificateThumbprint>
     <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+    <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
+    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
+    <GenerateTestArtifacts>True</GenerateTestArtifacts>
+    <AppxBundle>Never</AppxBundle>
+    <AppInstallerUri>https://cpr.software/downloads/cpr-touch-vision</AppInstallerUri>
+    <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
   </PropertyGroup>
+  <Import Project="cpr-touch-vision.dotnet_reactor.targets" Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
 </Project>

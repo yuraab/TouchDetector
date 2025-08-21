@@ -10,14 +10,14 @@
 
   <Identity
     Name="software.cpr.touch-vision"
-    Publisher="CN=CPR Software"
+    Publisher="CN=CPR Software, O=CPR Software, C=US"
     Version="1.0.0.0" />
 
   <mp:PhoneIdentity PhoneProductId="25e3dc91-ff54-49d3-b06f-bb3a11a6ea49" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
     <DisplayName>cpr-touch-vision</DisplayName>
-    <PublisherDisplayName>CPR Soft</PublisherDisplayName>
+    <PublisherDisplayName>CPR Software</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
