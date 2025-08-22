@@ -172,7 +172,7 @@ namespace CPRTouchVision
 
         private void DrawTouchZonePolygon(SKCanvas canvas)
         {
-            if (!_manager.IsTouchZoneSet)
+            if (!_manager.IsTouchZoneSet || _manager.TouchZonePoints.Length != 4)
                 return;
 
             var paint = new SKPaint()
