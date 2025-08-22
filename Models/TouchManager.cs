@@ -380,6 +380,7 @@ namespace CPRTouchVision.Models
                 _floorCamera = onFloorMounted; // ensure it's assigned (first run)
                 IsCameraPositionDefined = true;
                 CheckIsReadyRunTouchLoop();
+                StartTouchLoop();
             }
 
         }
