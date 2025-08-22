@@ -2,7 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>CPRTouchVision</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -153,6 +153,7 @@
     <AppxBundle>Never</AppxBundle>
     <AppInstallerUri>https://cpr.software/downloads/cpr-touch-vision</AppInstallerUri>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
   </PropertyGroup>
   <Import Project="cpr-touch-vision.dotnet_reactor.targets" Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
 </Project>
