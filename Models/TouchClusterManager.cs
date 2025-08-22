@@ -384,20 +384,21 @@ namespace CPRTouchVision.Models
         private Vector3 _center3D;
         public Vector2 _normalizedCenter;
         private float _radius;
+        private int _count;
 
         public Vector2 Center => _center;        // 2D center point of the cluster
                 // 2D center point of the cluster
 
         public float Radius => _radius;          // Max radius from center
-        public int Count => _points.Count;
+        public int Count => _count;
         public List<Vector2> Points => _points;
 
         public Vector2 NormalizedCenter { get { return _normalizedCenter; } set { _normalizedCenter = value; } }
         public Vector3 Center3D { get { return _center3D; } set { _center3D = value; } }
         public Touch2DCluster(List<Vector2> points)
         {
-            _center3D = Vector3.Zero; // this is calculated out of this class
             _points = points;
+            _center3D = Vector3.Zero; // this is calculated out of this class
             if (points == null || points.Count == 0)
             {
                 _center = Vector2.Zero;
@@ -408,6 +409,7 @@ namespace CPRTouchVision.Models
             {
                 _center = CalculateCenter();
                 _radius = CalculateRadius();
+                _count = points.Count;
             }
 
         }
@@ -444,23 +446,23 @@ namespace CPRTouchVision.Models
     {
         private readonly double _eps;
         private readonly int _minPoints;
-        private readonly int _minRadius;
-        private readonly int _rateLimitMs;
+        //private readonly int _minRadius;
+        //private readonly int _rateLimitMs;
         //private DateTime _lastSentTime = DateTime.MinValue;
 
         // Optional: noise suppression (per cluster location)
-        private readonly List<Vector3> _recentCenters = new();
-        private readonly float _minClusterDistance = 10; // millimeters
+        //private readonly List<Vector3> _recentCenters = new();
+        private readonly float _minClusterRadius = 10; // millimeters
         private readonly float _mergeThreshold = 1.1f; // Relative to radius sum
 
         public int MinPoints => _minPoints;
 
-        public Touch2DClusterManager(double eps = 30, int minPoints = 4, int minRadius = 10, int rateLimitMs = 100)
+        public Touch2DClusterManager(double eps = 30, int minPoints = 4)
         {
             _eps = eps;
             _minPoints = minPoints;
-            _minRadius = minRadius;
-            _rateLimitMs = rateLimitMs;
+            //_minRadius = minRadius;
+            //_rateLimitMs = rateLimitMs;
         }
 
 
@@ -490,7 +492,11 @@ namespace CPRTouchVision.Models
                 initial.Add(touchCluster);
 
             }
-            return MergeClusters(initial);
+            var mergedClusters = MergeClusters(initial);
+
+            var finalClusters = mergedClusters.Where(c => c.Radius >= _minClusterRadius).ToList(); // Filter clusters by radius threshold 
+
+            return finalClusters;
         }
 
         private List<Touch2DCluster> MergeClusters(List<Touch2DCluster> clusters)

@@ -1,6 +1,9 @@
-﻿using System.Numerics;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using SkiaSharp;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 
 namespace CPRTouchVision.Models
 {
@@ -138,4 +141,109 @@ namespace CPRTouchVision.Models
 
         public static DepthPoint Empty => new DepthPoint();
     }
+
+    public struct DepthStat
+    {
+        int Sum;
+        int Count;
+        int SumSq;
+        int Min;
+        int Max;
+
+        public void Add(int depth)
+        {
+            if (depth > 0)
+            {
+                if (Count == 0)
+                {
+                    Min = Max = depth;
+                }
+                else
+                {
+                    if (depth < Min) Min = depth;
+                    if (depth > Max) Max = depth;
+                }
+
+                Sum += depth;
+                SumSq += depth * depth;
+                Count++;
+            }
+        }
+        public float GetAverage()
+        {
+            return Count > 0 ? Sum / Count : 0;
+        }
+        public float GetStdDev()
+        {
+            if (Count <= 1) return 0;
+            float mean = GetAverage();
+            float variance = (SumSq / Count) - (mean * mean);
+            return variance > 0 ? (float)Math.Sqrt(variance) : 0;
+        }
+    }
+
+
+    public class DepthBuffer
+    {
+        private readonly float[] buffer;
+        private int index = 0;
+        private int count = 0;
+
+        public DepthBuffer(int capacity = 16)
+        {
+            buffer = new float[capacity];
+        }
+
+        public void AddSample(float depth)
+        {
+            if (depth <= 0) return; 
+
+            buffer[index] = depth;
+            index = (index + 1) % buffer.Length;
+            if (count < buffer.Length) count++;
+        }
+
+        // Median
+        public float GetMedian()
+        {
+            if (count == 0) return 0;
+
+            float[] sorted = new float[count];
+            Array.Copy(buffer, sorted, count);
+            Array.Sort(sorted);
+
+            int mid = count / 2;
+            if (count % 2 == 0)
+                return (sorted[mid - 1] + sorted[mid]) / 2.0f;
+            else
+                return sorted[mid];
+        }
+
+        // Trimmed average (trimm edges 20%)
+        public float GetTrimmedMean(float trimFraction = 0.2f)
+        {
+            if (count == 0) return 0;
+
+            float[] sorted = new float[count];
+            Array.Copy(buffer, sorted, count);
+            Array.Sort(sorted);
+
+            int trim = (int)(count * trimFraction);
+            int start = trim;
+            int end = count - trim;
+
+            if (end <= start) return sorted[count / 2]; // fallback → median
+
+            float sum = 0;
+            int validCount = 0;
+            for (int i = start; i < end; i++)
+            {
+                sum += sorted[i];
+                validCount++;
+            }
+
+            return validCount > 0 ? sum / validCount : 0;
+        }
+    }
+
 }

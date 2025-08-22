@@ -29,45 +29,23 @@
                 Padding="20">
 
                 <StackPanel Orientation="Horizontal"
-                            Spacing="8"
-                            Margin="0 0 0 20">
+             Spacing="8"
+             Margin="0 0 0 20">
                     <Image Source="{ThemeResource CprTouchVisionLogo}"
-                           Width="40"
-                           Height="40" />
+            Width="40"
+            Height="40" />
                     <TextBlock Text="CPR Touch Vision"
-                               VerticalAlignment="Center"
-                               Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                VerticalAlignment="Center"
+                Style="{ThemeResource BodyStrongTextBlockStyle}"/>
                 </StackPanel>
-                
+
                 <Button Content="{x:Bind _manager.ToggleTitle, Mode=OneWay}"
                 Click="OnToggleClicked"
                 HorizontalAlignment="Stretch" />
 
-                <!-- Wall Plane Section -->
-                <Grid Margin="0 20 0 0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Wall Plane"
-                       Style="{ThemeResource SubtitleTextBlockStyle}"
-                       VerticalAlignment="Center" />
-                    <TextBlock Text="{x:Bind _manager.WallPlaneStatus, Mode=OneWay}"
-                       Foreground="{x:Bind _manager.WallPlaneForeground, Mode=OneWay}"
-                       VerticalAlignment="Center"
-                       Grid.Column="1"/>
-                </Grid>
-                
                 <TextBlock Text="Select 3 points on the wall to define touch plane."
                    Style="{ThemeResource CaptionTextBlockStyle}"
                    Margin="0 0 0 0" />
-                
-                <Button Content="Define"
-                Click="OnDefineWallPlaneClicked"
-                HorizontalAlignment="Stretch"
-                IsEnabled="{x:Bind _manager.IsCalibrationToggleEnabled, Mode=OneWay}"
-                Margin="0 10 0 0" />
-                <!-- End of Wall Plane Section -->
 
                 <!-- Touch Zone Section -->
                 <Grid Margin="0 20 0 0">
@@ -84,7 +62,7 @@
                        Grid.Column="1"/>
                 </Grid>
 
-                <TextBlock Text="Select 2 points to define a rectangle area for interactions."
+                <TextBlock Text="Select 4 points to define a rectangle area for interactions."
                    Style="{ThemeResource CaptionTextBlockStyle}"
                    Margin="0 0 0 0" />
 

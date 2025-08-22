@@ -49,9 +49,13 @@ namespace CPRTouchVision.Models
         public void SetMaxQueueSize(int max) => _maxQueueSize = max;
         public void SetTargetFps(int fps) => _minFrameInterval = TimeSpan.FromMilliseconds(1000.0 / fps);
 
-        public TouchLoop(TouchVolume volume, Calibration calibration, int maxRatePerSecond = 10)
+        public TouchLoop(
+            TouchVolume volume, 
+            Calibration calibration,
+            List<ExclusionZone> exclusionZones = null,
+            int maxRatePerSecond = 10)
         {
-            _tracker = new TouchTracker_(volume, calibration);  
+            _tracker = new TouchTracker_(volume, calibration, exclusionZones);  
             _thread = new Thread(ProcessingLoop)
             {
                 IsBackground = true,

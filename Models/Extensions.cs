@@ -16,6 +16,11 @@ namespace CPRTouchVision.Models
 {
     public static class Extensions
     {
+        public static bool IsZero(this Vector3 p)
+        {
+            return p.X == 0f && p.Y == 0f && p.Z == 0f;
+        }
+
         public static SKPoint ToSKPoint(this Vector3 point)
         {
             return new SKPoint(point.X, point.Y);
