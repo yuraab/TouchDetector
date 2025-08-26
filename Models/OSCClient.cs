@@ -1,12 +1,15 @@
 ﻿using SharpOSC;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 //using System.Collections.Specialized;
 //using System.Linq;
 //using System.Net;
 
 namespace CPRTouchVision.Models
 {
+    [Obfuscation(Exclude = true, ApplyToMembers = true, Feature = "renaming")]
+    [Obfuscation(Exclude = true, ApplyToMembers = true, Feature = "string encryption")]
     internal class OSCClient
     {
 

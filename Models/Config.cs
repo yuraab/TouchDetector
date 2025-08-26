@@ -1,8 +1,10 @@
 ﻿using System.Numerics;
+using System.Reflection;
 
 namespace CPRTouchVision.Models
 {
     // Class to hold configuration and calibration data for the application.
+    [Obfuscation(Exclude = true, ApplyToMembers = true)]
     internal class Config
     {
         public int? GameScreenWidth;

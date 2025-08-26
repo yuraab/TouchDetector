@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using CPRLib;
 using OB = OBSharp.Sensor;
 using System.Runtime.InteropServices;
+using System.Reflection;
 
 namespace CPRTouchVision.Models
 {
@@ -624,7 +625,7 @@ namespace CPRTouchVision.Models
         public async Task LoadConfig()
         {
             _isConfigGotten = false;
-
+            
             if (File.Exists(CONFIG_PATH))
             {
                 var bytes = await File.ReadAllBytesAsync(CONFIG_PATH);
@@ -633,6 +634,7 @@ namespace CPRTouchVision.Models
 #if DEBUG
                 App.Log($"Loaded Data: {json}");
 #endif
+                
                 if (JsonConvert.DeserializeObject<Config>(json) is Config config)
                 {
                     if (config.PlaneD.HasValue && config.PlaneNormal.HasValue)
@@ -643,6 +645,8 @@ namespace CPRTouchVision.Models
                         _cameraPosition = config.CameraPosition.HasValue ? config.CameraPosition.Value : Vector3.Zero;
                         IsWallPlaneSet = true;
                     }
+
+                    Debug.WriteLine($"D: {config.PlaneD}; Normal: {config.PlaneNormal}");
 
                     if (IsWallPlaneSet && config.TouchZoneCorners != null && config.TouchZoneCorners.Count() > 0)
                     {
@@ -1365,8 +1369,10 @@ namespace CPRTouchVision.Models
             Dispose();
         }
 
+        [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_SUB_FOLDER = "CPR Touch Vision";
         public static string CONFIG_FOLDER => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
+        [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_PATH => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER, "config.json");
         public static string CommonFolderPath
         {

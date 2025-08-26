@@ -12,12 +12,12 @@
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
-	  <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
+    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
   </PropertyGroup>
-	<PropertyGroup Condition="'$(Configuration)'=='Release'">
-		<DebugSymbols>false</DebugSymbols>
-		<DebugType>none</DebugType>
-	</PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\favicon.ico" />
     <None Remove="Assets\imgs\img-0.png" />
@@ -145,7 +145,7 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <PackageCertificateThumbprint>526B61533B2E1881D0EB9F7219DDF29C7D05F3B8</PackageCertificateThumbprint>
+    <PackageCertificateThumbprint>8BA23FD2B29647E1173AD5ECF52A5398C9A110CB</PackageCertificateThumbprint>
     <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
     <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
@@ -155,6 +155,15 @@
     <AppInstallerUri>https://cpr.software/downloads/cpr-touch-vision</AppInstallerUri>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x86'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
+    <DebugType>none</DebugType>
   </PropertyGroup>
   <Import Project="cpr-touch-vision.dotnet_reactor.targets" Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
 </Project>
