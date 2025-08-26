@@ -8,6 +8,7 @@ using System;
 using Windows.System;
 using System.Linq;
 using WinUIEx;
+using Microsoft.UI.Xaml.Controls;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -41,7 +42,10 @@ namespace CPRTouchVision
             };
             ctrlZ.Invoked += CtrlZ_Invoked;
 
-            (this.Content as UIElement)?.KeyboardAccelerators.Add(ctrlZ);
+            Root.KeyboardAccelerators.Add(ctrlZ);
+            ToolTipService.SetToolTip(Root, null);
+            //(this.Content as UIElement)?.KeyboardAccelerators.Add(ctrlZ);
+            //(this.Connect as UIElement).toolti
         }
 
         private void CtrlZ_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)

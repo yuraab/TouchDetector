@@ -15,7 +15,8 @@
     MinHeight="600"
     Title="CPR Touch Vision">
 
-    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+    <Grid x:Name="Root"
+          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
           Loaded="OnGridLoaded">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="250" />
@@ -42,11 +43,7 @@
                 <Button Content="{x:Bind _manager.ToggleTitle, Mode=OneWay}"
                 Click="OnToggleClicked"
                 HorizontalAlignment="Stretch" />
-
-                <TextBlock Text="Select 3 points on the wall to define touch plane."
-                   Style="{ThemeResource CaptionTextBlockStyle}"
-                   Margin="0 0 0 0" />
-
+                
                 <!-- Touch Zone Section -->
                 <Grid Margin="0 20 0 0">
                     <Grid.ColumnDefinitions>

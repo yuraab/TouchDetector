@@ -58,6 +58,7 @@
     <PackageReference Include="DBSCAN.RBush" Version="3.0.0" />
     <PackageReference Include="Emgu.CV" Version="4.11.0.5746" />
     <PackageReference Include="Emgu.CV.runtime.windows" Version="4.11.0.5746" />
+    <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.5.2" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4188" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.250606001" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />

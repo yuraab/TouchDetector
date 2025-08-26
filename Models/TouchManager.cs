@@ -1202,7 +1202,7 @@ namespace CPRTouchVision.Models
             // Enable the touch zone toggle only when the app is running, the wall plane is defined,
             // we are not currently selecting the touch zone, and we are not fitting a plane.
             //IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
-            IsTouchZoneToggleEnabled = IsWallPlaneSet && !IsSelectingTouchZone && !IsTouchZoneDefining;
+            IsTouchZoneToggleEnabled = value; // !IsSelectingTouchZone && !IsTouchZoneDefining;
             CheckIsReadyRunTouchLoop();
         }
 
@@ -1365,7 +1365,7 @@ namespace CPRTouchVision.Models
             Dispose();
         }
 
-        public static string CONFIG_SUB_FOLDER = "CPRTouchVision";
+        public static string CONFIG_SUB_FOLDER = "CPR Touch Vision";
         public static string CONFIG_FOLDER => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
         public static string CONFIG_PATH => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER, "config.json");
         public static string CommonFolderPath
