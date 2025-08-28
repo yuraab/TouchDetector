@@ -8,8 +8,7 @@ using System.Reflection;
 
 namespace CPRTouchVision.Models
 {
-    [Obfuscation(Exclude = true, ApplyToMembers = true, Feature = "renaming")]
-    [Obfuscation(Exclude = true, ApplyToMembers = true, Feature = "string encryption")]
+    [Obfuscation(Exclude = true, ApplyToMembers = true)]
     internal class OSCClient
     {
 

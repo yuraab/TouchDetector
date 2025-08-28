@@ -1034,7 +1034,8 @@ namespace CPRTouchVision.Models
             }
             Helper.CheckPlane(points, plane);
 #endif
-            _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
+           // TODO: - cuts out more then needed, in a real world rock climbing walls setup, needs adjustment
+           // _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
 
             //await SaveConfig(); 
             IsTouchZoneDefining = false;
