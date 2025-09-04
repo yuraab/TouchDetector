@@ -11,7 +11,7 @@
   <Identity
     Name="software.cpr.touch-vision"
     Publisher="CN=CPR Software"
-    Version="1.0.1.0" />
+    Version="1.0.2.0" />
 
   <mp:PhoneIdentity PhoneProductId="25e3dc91-ff54-49d3-b06f-bb3a11a6ea49" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

@@ -65,7 +65,7 @@ namespace CPRTouchVision.Models
             try
             {
                 _device.StartCameras(_config);
-
+                
                 while (_isRunning)
                 {
                     if ((ShouldCollectIMU || _shouldGetCameraPosition) && !_isIMURunning)
@@ -135,7 +135,6 @@ namespace CPRTouchVision.Models
                             _sampleCount = 0;
                             _shouldGetCameraPosition = false;
                         }
-
                     }
                 }
             }

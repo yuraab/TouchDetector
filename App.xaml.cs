@@ -111,16 +111,6 @@ namespace CPRTouchVision
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            var instance = AppInstance.FindOrRegisterInstanceForKey("cpr-touch-vision");
-
-            if (!instance.IsCurrentInstance)
-            {
-                instance.RedirectActivationTo();
-                //AppInstance.GetInstances()[0].RedirectActivationTo(instance);
-                Environment.Exit(0);
-                return;
-            }
-
             string? startCommand = null;
 
             if (AppInstance.GetActivatedEventArgs() is IActivatedEventArgs activatedArgs)
