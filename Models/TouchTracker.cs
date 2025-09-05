@@ -164,6 +164,10 @@ namespace CPRTouchVision.Models
             {
                 App.Log($"[TouchTracker] Filtered points count: {points.Count}");
             }
+            else
+            {
+                App.Log($"[TouchTracker] Not enough points for clustering. Count: {points.Count}");
+            }
 #endif
             if (points.Count < _clusterManager.MinPoints)
             {
