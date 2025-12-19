@@ -38,7 +38,7 @@ namespace CPRTouchVision.Models
             _config = new DeviceConfiguration()
             {
                 CameraFps = FrameRate.Thirty,
-                DepthMode = DepthMode.NarrowViewUnbinned,
+                DepthMode = DepthMode.WideView2x2Binned,
                 ColorResolution = ColorResolution.R720p,
                 ColorFormat = ImageFormat.ColorBgra32,
                 WiredSyncMode = WiredSyncMode.Standalone,
