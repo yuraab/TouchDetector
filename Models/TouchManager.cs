@@ -365,6 +365,7 @@ namespace CPRTouchVision.Models
                 _floorCamera = onFloorMounted; // ensure it's assigned (first run)
                 IsCameraPositionDefined = true;
                 CheckIsReadyRunTouchLoop();
+                StartTouchLoop();
             }
 
         }
@@ -435,60 +436,40 @@ namespace CPRTouchVision.Models
             int totalPixels = colorImage.WidthPixels * colorImage.HeightPixels;
             int bpp = 4; // RGBA
 
-            byte* start = ptr;
-            byte* end = ptr + (totalPixels - 1) * bpp;
+            // Use 32-bit chunks for faster swapping
+            uint* start = (uint*)ptr;
+            uint* end = (uint*)(ptr + (totalPixels - 1) * bpp);
 
             while (start < end)
             {
-                for (int i = 0; i < bpp; i++)
-                {
-                    byte tmp = start[i];
-                    start[i] = end[i];
-                    end[i] = tmp;
-                }
-                start += bpp;
-                end -= bpp;
+                uint tmp = *start;
+                *start = *end;
+                *end = tmp;
+
+                start++;
+                end--;
             }
         }
 
         // Unsafe helper for depth flip (ushort per pixel)
-        private void FlipDepth180(OB.Image img)
+        private unsafe void FlipDepth180(OB.Image img)
         {
             if (img == null) return;
 
             int width = img.WidthPixels;
             int height = img.HeightPixels;
+            int totalPixels = width * height;
 
-            unsafe
+            ushort* ptr = (ushort*)img.Buffer;
+
+            // Flip entire image by swapping symmetric pixels
+            for (int i = 0; i < totalPixels / 2; i++)
             {
-                ushort* ptr = (ushort*)img.Buffer;
-                int stride = width;
+                int opposite = totalPixels - 1 - i;
 
-                for (int y = 0; y < height / 2; y++)
-                {
-                    int oppositeY = height - 1 - y;
-
-                    for (int x = 0; x < width; x++)
-                    {
-                        // swap pixels
-                        ushort tmp = ptr[y * stride + x];
-                        ptr[y * stride + x] = ptr[oppositeY * stride + (width - 1 - x)];
-                        ptr[oppositeY * stride + (width - 1 - x)] = tmp;
-                    }
-                }
-
-                // If height is odd, flip the middle row
-                if ((height & 1) != 0)
-                {
-                    int midY = height / 2;
-                    for (int x = 0; x < width / 2; x++)
-                    {
-                        int oppositeX = width - 1 - x;
-                        ushort tmp = ptr[midY * stride + x];
-                        ptr[midY * stride + x] = ptr[midY * stride + oppositeX];
-                        ptr[midY * stride + oppositeX] = tmp;
-                    }
-                }
+                ushort tmp = ptr[i];
+                ptr[i] = ptr[opposite];
+                ptr[opposite] = tmp;
             }
         }
 
@@ -733,6 +714,25 @@ namespace CPRTouchVision.Models
             return DepthPoint.Empty;
         }
 
+        OBSharp.Float3 TransformToDepthSpace(OBSharp.Float3 worldPoint, CalibrationExtrinsics extrinsics)
+        {
+            // Invert rotation (transpose for orthonormal matrix)
+            var R = extrinsics.Rotation;
+            var T = extrinsics.Translation;
+
+            // Subtract translation
+            float x = worldPoint.X - T[0];
+            float y = worldPoint.Y - T[1];
+            float z = worldPoint.Z - T[2];
+
+            // Apply transposed rotation
+            float dx = R[0] * x + R[3] * y + R[6] * z;
+            float dy = R[1] * x + R[4] * y + R[7] * z;
+            float dz = R[2] * x + R[5] * y + R[8] * z;
+
+            return new OBSharp.Float3(dx, dy, dz);
+        }
+
         Vector3 Convert2DTo3DPoint(int pointX, int pointY, ushort d)
         {
             var worldPoint1 = _calibration.Convert2DTo3D(new(pointX, pointY), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
@@ -742,6 +742,10 @@ namespace CPRTouchVision.Models
             Vector3 pointD = new Vector3(x, y, z);
 #if DEBUG
             IsPointOnPlane(pointD, _planeNormal, _planeD);
+            var extrinsics = _calibration.GetExtrinsics(CalibrationGeometry.Color, CalibrationGeometry.Depth);
+            var depthSpacePoint = TransformToDepthSpace(new OBSharp.Float3(x, y, z), extrinsics);
+            float recoveredDepth = depthSpacePoint.Z;
+            App.Log($"Converted 2D point ({pointX}, {pointY}) with depth {d} to 3D point {pointD}. Recovered depth in depth space: {recoveredDepth}");
 #endif
             return pointD;
         }
