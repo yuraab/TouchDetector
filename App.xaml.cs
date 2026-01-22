@@ -109,7 +109,7 @@ namespace CPRTouchVision
         /// Invoked when the application is launched.
         /// </summary>
         /// <param name="args">Details about the launch request and process.</param>
-        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             string? startCommand = null;
 
@@ -175,6 +175,15 @@ namespace CPRTouchVision
             }
 
             Environment.Exit(0);
+        }
+
+        private async Task<bool> RedirectToMainInstance()
+        {
+            var main = AppInstance.FindOrRegisterInstanceForKey("cpr-touch-vision");
+            
+            
+
+            return false;
         }
 
         private void LogUnhandled(string source, Exception? ex)

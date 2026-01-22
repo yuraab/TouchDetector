@@ -1,62 +1,66 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿﻿<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+
     <RootNamespace>CPRTouchVision</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x86;x64;ARM64;AnyCPU</Platforms>
-    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
+
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
+
+    <Platforms>x86;x64;ARM64;AnyCPU</Platforms>
+    <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
+
     <Nullable>enable</Nullable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
     <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
+
+    <!-- Use the real file path -->
+    <ApplicationIcon>Assets\favicon.ico</ApplicationIcon>
   </PropertyGroup>
+
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
   </PropertyGroup>
+
+  <!-- If you want to override default item inference -->
   <ItemGroup>
-    <None Remove="Assets\favicon.ico" />
-    <None Remove="Assets\imgs\img-0.png" />
-    <None Remove="Assets\imgs\img-1.png" />
-    <None Remove="Assets\imgs\img-2.png" />
-    <None Remove="Assets\imgs\img-3.png" />
-    <None Remove="Assets\imgs\img-4.png" />
-    <None Remove="Assets\imgs\img-5.png" />
-    <None Remove="Assets\imgs\img-6.png" />
-    <None Remove="Assets\imgs\img-7.png" />
-    <None Remove="Assets\imgs\img-8.png" />
-    <None Remove="Assets\imgs\img-9.png" />
-    <None Remove="Assets\svg\cpr-touch-vision-icon-light.svg" />
     <None Remove="Windows\InitWindow.xaml" />
   </ItemGroup>
+
+  <!-- Ensure ALL assets are actually Content (Include, not Update) -->
   <ItemGroup>
+    <Content Include="Assets\favicon.ico" CopyToOutputDirectory="PreserveNewest" />
+
+    <Content Include="Assets\imgs\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\svg\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
     <Content Include="Assets\Square150x150Logo.scale-200.png" />
     <Content Include="Assets\Square44x44Logo.scale-200.png" />
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
-    <Content Include="favicon.ico" />
   </ItemGroup>
+
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
-  <!--
-    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
-    Tools extension to be activated for this project even if the Windows App SDK Nuget
-    package has not yet been restored.
-  -->
+
   <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
     <ProjectCapability Include="Msix" />
   </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="ComputeSharp" Version="3.2.0" />
     <PackageReference Include="DBSCAN.RBush" Version="3.0.0" />
+    <PackageReference Include="DBSCAN" Version="3.0.0" />
     <PackageReference Include="Emgu.CV" Version="4.11.0.5746" />
     <PackageReference Include="Emgu.CV.runtime.windows" Version="4.11.0.5746" />
     <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.5.2" />
@@ -67,105 +71,69 @@
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
     <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.0" />
     <PackageReference Include="System.Management" Version="9.0.7" />
-    <PackageReference Include="System.Private.Uri" Version="4.3.2" />
     <PackageReference Include="WinUIEx" Version="2.6.0" />
-    <PackageReference Include="DBSCAN" Version="3.0.0" />
+
+    <!-- REMOVE this:
+         <PackageReference Include="System.Private.Uri" Version="4.3.2" />
+    -->
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\cpr-lib-old\CPRLib.csproj" />
     <ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />
   </ItemGroup>
+
   <ItemGroup>
     <Reference Include="SharpOSC">
       <HintPath>..\..\..\..\..\dev\SharpOSC.dll</HintPath>
     </Reference>
   </ItemGroup>
-  <ItemGroup>
-    <Content Update="Assets\favicon.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-0.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-1.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-2.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-3.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-4.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-5.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-6.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-7.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-8.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\imgs\img-9.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Assets\svg\cpr-touch-vision-icon-light.svg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+
   <ItemGroup>
     <Page Update="Windows\InitWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>
+
+  <!-- Fix native copy target: use the items you declared, and copy to output -->
   <Target Name="CopyNativeDependencies" AfterTargets="Build">
     <ItemGroup>
-      <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.dll" />
-      <NativeFilesToCopy Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.onnx" />
+      <NativeDlls Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.dll" />
+      <OnnxFiles Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.onnx" />
     </ItemGroup>
-    <Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(OnnxFiles)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
+
+    <Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(OnnxFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
-  <!--
-    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
-    Explorer "Package and Publish" context menu entry to be enabled for this project even if
-    the Windows App SDK Nuget package has not yet been restored.
-  -->
+
   <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
     <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
   </PropertyGroup>
-  <!-- Publish Properties -->
+
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">False</PublishReadyToRun>
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
+
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+
     <PackageCertificateThumbprint>526B61533B2E1881D0EB9F7219DDF29C7D05F3B8</PackageCertificateThumbprint>
     <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+
     <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
     <AppxBundle>Never</AppxBundle>
+
     <AppInstallerUri>https://cpr.software/downloads/cpr-touch-vision</AppInstallerUri>
     <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
+
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
-    <ApplicationIcon>favicon.ico</ApplicationIcon>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x86'">
-    <DebugType>none</DebugType>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <DebugType>none</DebugType>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
-    <DebugType>none</DebugType>
-  </PropertyGroup>
-  <Import Project="cpr-touch-vision.dotnet_reactor.targets" Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
+
+  <Import Project="cpr-touch-vision.dotnet_reactor.targets"
+          Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
+
 </Project>
