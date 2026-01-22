@@ -29,8 +29,9 @@ namespace CPRTouchVision
         {
 
             ObSharpLogger.LogAction = Log;
+#if DEBUG
             AttachConsole(); // Optional debug console
-
+# endif
             string? userHome = Environment.GetEnvironmentVariable("HOME");
             if (string.IsNullOrEmpty(userHome))
             {
@@ -95,11 +96,21 @@ namespace CPRTouchVision
         /// Invoked when the application is launched.
         /// </summary>
         /// <param name="args">Details about the launch request and process.</param>
-        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-;
+            if (await RedirectToMainInstance()) { return; }
+
             _window = new MainWindow();
             _window.Activate();
+        }
+
+        private async Task<bool> RedirectToMainInstance()
+        {
+            var main = AppInstance.FindOrRegisterInstanceForKey("cpr-touch-vision");
+            
+            
+
+            return false;
         }
 
         private void LogUnhandled(string source, Exception? ex)

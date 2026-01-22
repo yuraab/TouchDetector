@@ -1047,7 +1047,7 @@ namespace CPRTouchVision.Models
             }
             Helper.CheckPlane(points, plane);
 #endif
-            _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
+            // _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
 
             //await SaveConfig(); 
             IsTouchZoneDefining = false;
@@ -1219,7 +1219,7 @@ namespace CPRTouchVision.Models
             // Enable the touch zone toggle only when the app is running, the wall plane is defined,
             // we are not currently selecting the touch zone, and we are not fitting a plane.
             //IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
-            IsTouchZoneToggleEnabled = IsWallPlaneSet && !IsSelectingTouchZone && !IsTouchZoneDefining;
+            IsTouchZoneToggleEnabled = IsRunning && !IsSelectingTouchZone && !IsTouchZoneDefining;
             CheckIsReadyRunTouchLoop();
         }
 

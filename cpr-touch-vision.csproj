@@ -54,9 +54,12 @@
 	  <PackageReference Include="DBSCAN" Version="3.0.0" />  
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj">
-      <Private>True</Private>
-    </ProjectReference>
+    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="SharpOSC">
+      <HintPath>..\..\..\..\..\dev\SharpOSC.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <Target Name="CopyNativeDependencies" AfterTargets="Build">
@@ -67,13 +70,7 @@
 
 	<Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
 	<Copy SourceFiles="@(OnnxFiles)" DestinationFolder="$(OutputPath)runtimes\win-x64\native" SkipUnchangedFiles="true" />
-  </Target>	
-	
-  <ItemGroup>
-    <Reference Include="SharpOSC">
-      <HintPath>C:\Tools\mylib\SharpOSC.dll</HintPath>
-    </Reference>
-  </ItemGroup>
+  </Target>
 
   <!--
     Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
@@ -91,5 +88,15 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <PackageCertificateThumbprint>526B61533B2E1881D0EB9F7219DDF29C7D05F3B8</PackageCertificateThumbprint>
+    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+    <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
+    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+    <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
+    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
+    <GenerateTestArtifacts>True</GenerateTestArtifacts>
+    <AppxBundle>Never</AppxBundle>
+    <AppInstallerUri>https://cpr-software/downloads/cpr-touch-vision</AppInstallerUri>
+    <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
   </PropertyGroup>
 </Project>

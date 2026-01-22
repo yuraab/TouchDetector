@@ -8,9 +8,9 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="25e3dc91-ff54-49d3-b06f-bb3a11a6ea49"
-    Publisher="CN=CPR Soft"
-    Version="1.0.0.0" />
+    Name="software.cpr.touch-vision"
+    Publisher="CN=CPR Software, O=CPR Software, C=US"
+    Version="1.0.1.0" />
 
   <mp:PhoneIdentity PhoneProductId="25e3dc91-ff54-49d3-b06f-bb3a11a6ea49" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -42,6 +42,11 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
+      <Extensions>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="cpr-touch-vision"/>
+        </uap:Extension>
+      </Extensions>
     </Application>
   </Applications>
 
