@@ -413,8 +413,14 @@ namespace CPRTouchVision.Models
 
         private readonly object _depthLock = new();
         private readonly Calibration _calibration;
+        private CalibrationExtrinsics _extrinsics;
         private readonly int _fw, _fh;
-        //int counter = 0;
+#if DEBUG
+        public int counter = 0;
+        private string depthValues = "";
+        private int counterG;
+
+#endif
         public TouchVolume(
             Vector3 planeNormal,
             float PlaneDistance,
@@ -435,11 +441,10 @@ namespace CPRTouchVision.Models
             Polygon2D = new Vector2[4];
             MinOffset = minOffset;
             MaxOffset = maxOffset;
-            _minD = minWalDepth > maxOffset ? (ushort)(minWalDepth - maxOffset) : ushort.MinValue;
-            _maxD = maxWalDepth > minOffset ? (ushort)(maxWalDepth - minOffset) : maxWalDepth;
             _fw = fw;
             _fh = fh;
             _calibration = calibration;
+            _extrinsics = _calibration.GetExtrinsics(CalibrationGeometry.Color, CalibrationGeometry.Depth);
 
             WallNormal = planeNormal;
             WallDistance = PlaneDistance;
@@ -496,6 +501,7 @@ namespace CPRTouchVision.Models
             // Precompute screen/depth bounds for scan restriction
             _minSX = _fw; _maxSX = 0;
             _minSY = _fh; _maxSY = 0;
+            _minD = ushort.MaxValue; _maxD = 0;
 
 
             UpdateScreenMinMax(Polygon, minOffset);
@@ -535,11 +541,41 @@ namespace CPRTouchVision.Models
             _homography = Cv2.GetPerspectiveTransform(srcPts, dstPts); // 3x3 homography
         }
 
+        OBSharp.Float3 TransformToDepthSpace(OBSharp.Float3 worldPoint)
+        {
+            // Invert rotation (transpose for orthonormal matrix)
+            var R = _extrinsics.Rotation;
+            var T = _extrinsics.Translation;
+
+            // Subtract translation
+            float x = worldPoint.X - T[0];
+            float y = worldPoint.Y - T[1];
+            float z = worldPoint.Z - T[2];
+
+            // Apply transposed rotation
+            float dx = R[0] * x + R[3] * y + R[6] * z;
+            float dy = R[1] * x + R[4] * y + R[7] * z;
+            float dz = R[2] * x + R[5] * y + R[8] * z;
+
+            return new OBSharp.Float3(dx, dy, dz);
+        }
+
+        float TransformToDepth(OBSharp.Float3 worldPoint)
+        {
+            var depthPoint = TransformToDepthSpace(worldPoint);
+            return depthPoint.Z;
+        }
+
+        Vector3 ShiftAlongNormal(Vector3 point, float offset, bool towardCamera)
+        {
+            return towardCamera ? point + WallNormal * offset : point - WallNormal * offset;
+        }
+
         private void UpdateScreenMinMax(DepthPoint[] poly, float offset)
         {
             foreach (var p in poly)
             {
-                var shifted = p.World - WallNormal * offset; // point shifted from wall on offset
+                var shifted = ShiftAlongNormal(p.World, offset, true); // point shifted from wall on offset
                 var proj = _calibration.Convert3DTo2D(new(shifted.X, shifted.Y, shifted.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
 
                 int sx = p.SX, sy = p.SY;
@@ -554,6 +590,13 @@ namespace CPRTouchVision.Models
                 if (sy < _minSY) _minSY = sy;
                 if (sy > _maxSY) _maxSY = sy;
 
+                var depth = TransformToDepth(new OBSharp.Float3(shifted.X, shifted.Y, shifted.Z));
+#if DEBUG
+                App.Log($"Original Point => {p.World} Shifted Point => {shifted} has depth {depth}");
+
+#endif
+                if (depth < _minD) _minD = (ushort)Math.Floor(depth);
+                if (depth > _maxD) _maxD = (ushort)Math.Ceiling(depth);
             }
         }
 
@@ -563,6 +606,10 @@ namespace CPRTouchVision.Models
             float distanceToPlane = Vector3.Dot(WallNormal, point) + WallDistance;
             if (distanceToPlane > MaxOffset || distanceToPlane < MinOffset)
                 return false;
+#if DEBUG
+            counter++;
+#endif
+
             // Get 3D projected point
             Vector3 projected = new Vector3(
                 point.X - WallNormal.X * distanceToPlane,
@@ -588,14 +635,19 @@ namespace CPRTouchVision.Models
                        + WallNormal.Y * point.Y
                        + WallNormal.Z * point.Z
                        + WallDistance;
-
+#if DEBUG
+            counterG++;
+            //depthValues += $"{distanceToPlane.ToString("F3")}; ";
+#endif
             if (distanceToPlane > MaxOffset || distanceToPlane < MinOffset)
                 return false;
 
-            //counter++;
+#if DEBUG
+            counter++;
+#endif
 
-            // Get 3D projected point
-            Vector3 projected = new Vector3(
+        // Get 3D projected point
+        Vector3 projected = new Vector3(
                 point.X - WallNormal.X * distanceToPlane,
                 point.Y - WallNormal.Y * distanceToPlane,
                 point.Z - WallNormal.Z * distanceToPlane
@@ -713,6 +765,11 @@ namespace CPRTouchVision.Models
         {
             var result = new List<OB.Float2>();
             int step = 2;
+#if DEBUG
+            counter = 0;
+            counterG = 0;
+            depthValues = "";
+#endif
             lock (_depthLock)
             {
                 var localLists = new List<OB.Float2>[Environment.ProcessorCount];
@@ -734,6 +791,7 @@ namespace CPRTouchVision.Models
                                 float d = depthImage[index];
 
                                 if (d <= 0 || d < _minD || d > _maxD) continue;
+                                //if (d <= 0) continue;
 
                                 var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
                                 if (world == null) continue;
@@ -748,7 +806,12 @@ namespace CPRTouchVision.Models
                     },
                     localList => { lock (result) result.AddRange(localList); });
             }
-
+#if DEBUG
+            App.Log($"ExtractProjectedPointsInsideVolumeFromImage counter of points between Offsets: {counter}");
+            App.Log($"ExtractProjectedPointsInsideVolumeFromImage counter of points: {counterG}");
+            App.Log($"ExtractProjectedPointsInsideVolumeFromImage result count: {result.Count}");
+            //App.Log($"ExtractProjectedPointsInsideVolumeFromImage depth values: {depthValues}");
+#endif
             return result;
         }
         Vector3 GetProjectionToPlane(Vector3 point)
