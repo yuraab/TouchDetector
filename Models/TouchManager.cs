@@ -241,7 +241,7 @@ namespace CPRTouchVision.Models
 
         private void StartTouchLoop()
         {
-            //CheckIsReadyRunTouchLoop();
+            CheckIsReadyRunTouchLoop();
 #if DEBUG
             App.Log($"Track Touch Loop ready to start = {IsReadyTrackTouch}");
 #endif
@@ -784,7 +784,7 @@ namespace CPRTouchVision.Models
 
             if (_touchZonePoints.Count == TouchZonePointsCount)
             {
-                _touchZonePoints = CornerPointsSorter(_touchZonePoints);
+                // _touchZonePoints = CornerPointsSorter(_touchZonePoints);
                 IsSelectingTouchZone = false;
                 
                 IsFittingPlane = false;
@@ -1201,7 +1201,7 @@ namespace CPRTouchVision.Models
 
         private void CheckIsReadyRunTouchLoop()
         {
-            IsReadyTrackTouch = IsCameraPositionDefined && IsWallPlaneSet && IsTouchZoneSet && (MaxOffset > MinOffset) && !IsFittingPlane;
+            IsReadyTrackTouch =  IsWallPlaneSet && IsTouchZoneSet && (MaxOffset > MinOffset) && !IsFittingPlane; //  && IsCameraPositionDefined
         }
 
         partial void OnIsRunningChanged(bool value)

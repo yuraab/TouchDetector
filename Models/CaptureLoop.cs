@@ -20,7 +20,7 @@ namespace CPRTouchVision.Models
         protected volatile bool _isRunning = false;
 
         public bool ShouldCollectIMU = false;
-        private bool _shouldGetCameraPosition = true;
+        private bool _shouldGetCameraPosition = false;
         private Vector3 _accelSum;
         private int _sampleCount = 0;
         private object _lock;
@@ -30,7 +30,7 @@ namespace CPRTouchVision.Models
         public event EventHandler<bool>? CameraPositionReady;
 
 
-        public CaptureLoop(Device device, bool shouldGetCameraPosition = true)
+        public CaptureLoop(Device device, bool shouldGetCameraPosition = false)
         {
             _device = device;
             _thread = new Thread(BackgroundLoop) { IsBackground = true };

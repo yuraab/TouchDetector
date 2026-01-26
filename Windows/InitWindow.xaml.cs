@@ -111,7 +111,7 @@ namespace CPRTouchVision.Windows
 
         public async Task<bool> Init()
         {
-            var bitmap = await GetBitmap($"ms-appx:///Assets/imgs/{Utils.Images[7]}");
+            var bitmap = await GetBitmap(Utils.Images[7]);
             Api.Instance.Setup(bitmap);
             LicenseManager.Instance.LoadLicense();
             await LicenseManager.Instance.RefreshLicense();
