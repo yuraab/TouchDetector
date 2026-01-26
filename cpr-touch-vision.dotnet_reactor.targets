@@ -13,19 +13,19 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <DotNetReactorRoot>$(DOTNET_REACTOR)</DotNetReactorRoot>
-    <DotNetReactorRoot Condition="'$(DotNetReactorRoot)' == ''">$(DOTNETREACTORROOT)</DotNetReactorRoot>
+    <DotNetReactorRootEnv>$(DOTNET_REACTOR)</DotNetReactorRootEnv>
+    <DotNetReactorRootEnv Condition="'$(DotNetReactorRootEnv)' == ''">$(DOTNETREACTORROOT)</DotNetReactorRootEnv>
   </PropertyGroup>
 
   <Target Name="CheckDotNetReactorRoot">
-    <Error Condition="((('$(Release_DotNetReactor_Active)' == 'true') AND ('$(ConfigurationName)'=='$(Release_DotNetReactor_MSBuildConfiguration)'))) and ('$(DotNetReactorRoot)' == '')" Text="Neither DOTNET_REACTOR nor DOTNETREACTORROOT environment variable is set. Please install .NET Reactor or set one of them manually to continue. The variable must point to the .NET Reactor directory." />
+    <Error Condition="((('$(Release_DotNetReactor_Active)' == 'true') AND ('$(ConfigurationName)'=='$(Release_DotNetReactor_MSBuildConfiguration)'))) and ('$(DotNetReactorRootEnv)' == '')" Text="Neither DOTNET_REACTOR nor DOTNETREACTORROOT environment variable is set. Please install .NET Reactor or set one of them manually to continue. The variable must point to the .NET Reactor directory." />
   </Target>
 
   <PropertyGroup>
-    <DotNetReactorExe Condition="Exists('$(DotNetReactorRoot)\dotNET_Reactor.Console.exe')">$(DotNetReactorRoot)\dotNET_Reactor.Console.exe</DotNetReactorExe>
-    <DotNetReactorExe Condition="'$(DotNetReactorExe)' == '' AND Exists('$(DotNetReactorRoot)\dotNET_Reactor.Console')">$(DotNetReactorRoot)\dotNET_Reactor.Console</DotNetReactorExe>
-    <DotNetReactorExe Condition="'$(DotNetReactorExe)' == '' AND Exists('$(DotNetReactorRoot)\dotNET_Reactor.exe')">$(DotNetReactorRoot)\dotNET_Reactor.exe</DotNetReactorExe>
-    <DotNetReactorExe Condition="'$(DotNetReactorExe)' == '' AND Exists('$(DotNetReactorRoot)\dotNET_Reactor')">$(DotNetReactorRoot)\dotNET_Reactor</DotNetReactorExe>
+    <DotNetReactorExe Condition="Exists('$(DotNetReactorRootEnv)\dotNET_Reactor.Console.exe')">$(DotNetReactorRootEnv)\dotNET_Reactor.Console.exe</DotNetReactorExe>
+    <DotNetReactorExe Condition="'$(DotNetReactorExe)' == '' AND Exists('$(DotNetReactorRootEnv)\dotNET_Reactor.Console')">$(DotNetReactorRootEnv)\dotNET_Reactor.Console</DotNetReactorExe>
+    <DotNetReactorExe Condition="'$(DotNetReactorExe)' == '' AND Exists('$(DotNetReactorRootEnv)\dotNET_Reactor.exe')">$(DotNetReactorRootEnv)\dotNET_Reactor.exe</DotNetReactorExe>
+    <DotNetReactorExe Condition="'$(DotNetReactorExe)' == '' AND Exists('$(DotNetReactorRootEnv)\dotNET_Reactor')">$(DotNetReactorRootEnv)\dotNET_Reactor</DotNetReactorExe>
   </PropertyGroup>
   
   <Target Name="SetResolvedIntermediateOutputPath">
@@ -36,7 +36,7 @@
   </Target>
 
   <Target Name="RunDotNetReactor_Release" DependsOnTargets="CheckDotNetReactorRoot" AfterTargets="$(Release_DotNetReactor_MSBuildTarget)">
-    <Error Condition="(('$(Release_DotNetReactor_Active)' == 'true') AND ('$(ConfigurationName)' == '$(Release_DotNetReactor_MSBuildConfiguration)')) AND ('$(DotNetReactorExe)' == '')" Text="No dotNET_Reactor executable found in '$(DotNetReactorRoot)'." />
+    <Error Condition="(('$(Release_DotNetReactor_Active)' == 'true') AND ('$(ConfigurationName)' == '$(Release_DotNetReactor_MSBuildConfiguration)')) AND ('$(DotNetReactorExe)' == '')" Text="No dotNET_Reactor executable found in '$(DotNetReactorRootEnv)'." />
 
     <Exec Command="&quot;$(DotNetReactorExe)&quot; -file &quot;$(TargetPath)&quot; $(Release_DotNetReactor_ProjectFile_Command) $(Release_DotNetReactor_OptionalParameters) -targetfile &quot;$(Release_DotNetReactor_TargetFile)&quot;" Condition="'$(Release_DotNetReactor_Active)' == 'true' AND '$(ConfigurationName)' == '$(Release_DotNetReactor_MSBuildConfiguration)'" />
   </Target>
