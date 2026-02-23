@@ -20,6 +20,8 @@ namespace CPRTouchVision.Models
         public Quaternion? CameraRotation;
         public bool? FloorCamera;
         public ExclusionZone[]? ExclusionZones;
+        public bool? StartInAutoMode;
+        public bool? IsAutoMode;
 
         public Config(
             int? gameScreenWidth,
@@ -34,7 +36,9 @@ namespace CPRTouchVision.Models
             Vector3? cameraPosition,
             Quaternion? cameraRotation,
             bool? floorCamera,
-            ExclusionZone[]? exclusionZones
+            ExclusionZone[]? exclusionZones,
+            bool? startInAutoMode,
+            bool? isAutoMode
         )
 
         {
@@ -51,6 +55,8 @@ namespace CPRTouchVision.Models
             CameraRotation = cameraRotation;
             FloorCamera = floorCamera;
             ExclusionZones = exclusionZones;
+            StartInAutoMode = startInAutoMode;
+            IsAutoMode = isAutoMode;
         }
 
     }

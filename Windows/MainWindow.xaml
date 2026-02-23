@@ -40,9 +40,18 @@
                 Style="{ThemeResource BodyStrongTextBlockStyle}"/>
                 </StackPanel>
 
+                
                 <Button Content="{x:Bind _manager.ToggleTitle, Mode=OneWay}"
                 Click="OnToggleClicked"
                 HorizontalAlignment="Stretch" />
+
+                <ToggleSwitch
+                    Header="Calibration Mode"
+                    OnContent="Auto"
+                    OffContent="Manual"
+                    IsOn="{x:Bind _manager.IsAutoMode, Mode=TwoWay}"
+                    Toggled="OnCalibrationModeToggled"
+                    Margin="0 20 0 0"/>                
                 
                 <!-- Touch Zone Section -->
                 <Grid Margin="0 20 0 0">

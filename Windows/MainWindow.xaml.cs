@@ -66,6 +66,12 @@ namespace CPRTouchVision
             _manager.StartDefineZone();
         }
 
+        private void OnCalibrationModeToggled(object sender, RoutedEventArgs e)
+        {
+            //_manager.SwitchCalibrationMode(); 
+ 
+        }
+
         private void OnManagerChanged(object? sender, TouchManagerEventType e)
         {
             switch (e)
@@ -233,7 +239,8 @@ namespace CPRTouchVision
                 var s = ((UIElement)sender).XamlRoot.RasterizationScale;
                 var x = (int)(point.Position.X * s / _cw * _manager.FW);
                 var y = (int)(point.Position.Y * s / _ch * _manager.FH);
-                string message = $"point with x={x}, y={y}";
+ 
+                Debug.WriteLine($"Selected point with x={x}, y={y}. FW={_manager.FW}, FH={_manager.FH}");
 
                 if (_manager.IsSelectingTouchZone)
                 {

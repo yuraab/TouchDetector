@@ -1,10 +1,10 @@
-﻿using SharpOSC;
+﻿using Vizcon.OSC;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 //using System.Collections.Specialized;
 //using System.Linq;
-//using System.Net;
+using System.Net;
 
 namespace CPRTouchVision.Models
 {

@@ -41,7 +41,7 @@ namespace CPRTouchVision
         public App()
         {
 
-            ObSharpLogger.LogAction = Log;
+            //ObSharpLogger.LogAction = Log;
 #if DEBUG
             AttachConsole(); // Optional debug console
 #endif

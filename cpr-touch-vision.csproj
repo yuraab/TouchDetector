@@ -57,6 +57,7 @@
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.11.0.20250507" />
     <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.0" />
     <PackageReference Include="System.Management" Version="9.0.7" />
+    <PackageReference Include="Vizcon.OSC" Version="1.0.3" />
     <PackageReference Include="WinUIEx" Version="2.6.0" />
     <!-- REMOVE this:
          <PackageReference Include="System.Private.Uri" Version="4.3.2" />
@@ -106,4 +107,17 @@
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
   </PropertyGroup>
   <Import Project="cpr-touch-vision.dotnet_reactor.targets" Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
+  <!-- Include native DLLs from CPR Soft global folder into MSIX package -->
+  <ItemGroup>
+	  <!-- All native DLLs -->
+	  <Content Include="C:\ProgramData\CPR Soft\bin\*.dll">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		  <PackagePath>runtimes\win-x64\native</PackagePath>
+	  </Content>
+	  <!-- ONNX models -->
+	  <Content Include="C:\ProgramData\CPR Soft\bin\*.onnx">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		  <PackagePath>runtimes\win-x64\native</PackagePath>
+	  </Content>
+  </ItemGroup>
 </Project>

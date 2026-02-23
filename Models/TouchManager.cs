@@ -1,12 +1,15 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using ComputeSharp;
+using CPRLib;
 using Emgu.CV;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OBSharp.Sensor;
+using OpenCvSharp;
 using SkiaSharp;
 using System;
 using System.Buffers;
@@ -17,12 +20,12 @@ using System.IO;
 using System.Linq;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
-using CPRLib;
 using OB = OBSharp.Sensor;
-using System.Runtime.InteropServices;
-using System.Reflection;
+//using AutoCalibrator = ProjectorHomography;
 
 namespace CPRTouchVision.Models
 {
@@ -30,6 +33,12 @@ namespace CPRTouchVision.Models
     {
         [ObservableProperty]
         string _toggleTitle = "Start";
+
+        [ObservableProperty]
+        bool _isAutoMode = true;
+
+        [ObservableProperty]
+        bool _startInAutoMode = true;
 
         [ObservableProperty]
         bool _isRunning = false;
@@ -618,21 +627,32 @@ namespace CPRTouchVision.Models
                 
                 if (JsonConvert.DeserializeObject<Config>(json) is Config config)
                 {
-                    if (config.PlaneD.HasValue && config.PlaneNormal.HasValue)
+                    StartInAutoMode = config.StartInAutoMode ?? false;
+                    if (StartInAutoMode)
                     {
-                        _planeD = config.PlaneD.Value;
-                        _planeNormal = config.PlaneNormal.Value;
-                        _cameraRotation = config.CameraRotation.HasValue ? config.CameraRotation.Value : System.Numerics.Quaternion.Identity;
-                        _cameraPosition = config.CameraPosition.HasValue ? config.CameraPosition.Value : Vector3.Zero;
-                        IsWallPlaneSet = true;
+                        IsAutoMode = true;
                     }
-
-                    Debug.WriteLine($"D: {config.PlaneD}; Normal: {config.PlaneNormal}");
-
-                    if (IsWallPlaneSet && config.TouchZoneCorners != null && config.TouchZoneCorners.Count() > 0)
+                    else
                     {
-                        _touchZonePoints = config.TouchZoneCorners.ToList();
-                        IsTouchZoneSet = true;
+                        IsAutoMode = config.IsAutoMode ?? true;
+
+                        if (config.PlaneD.HasValue && config.PlaneNormal.HasValue)
+                        {
+                            _planeD = config.PlaneD.Value;
+                            _planeNormal = config.PlaneNormal.Value;
+                            _cameraRotation = config.CameraRotation.HasValue ? config.CameraRotation.Value : System.Numerics.Quaternion.Identity;
+                            _cameraPosition = config.CameraPosition.HasValue ? config.CameraPosition.Value : Vector3.Zero;
+                            IsWallPlaneSet = true;
+                        }
+
+                        Debug.WriteLine($"D: {config.PlaneD}; Normal: {config.PlaneNormal}");
+
+                        if (IsWallPlaneSet && config.TouchZoneCorners != null && config.TouchZoneCorners.Count() == 4)
+                        {
+                            _touchZonePoints = config.TouchZoneCorners.ToList();
+                            IsTouchZoneSet = true;
+                            _exclusionZones = (config.ExclusionZones != null && config.ExclusionZones.Length > 0) ? config.ExclusionZones.ToList() : null;
+                        }
                     }
                     MinOffset = config.MinOffset ?? _defaltMinOffset;
                     MaxOffset = config.MaxOffset ?? _defaltMaxOffset;
@@ -641,7 +661,7 @@ namespace CPRTouchVision.Models
                     GameScreenWidth = config.GameScreenWidth ?? _defaultGameScreenWidth;
                     GameScreenHeight = config.GameScreenHeight ?? _defaultGameScreenHeight;
                     _floorCamera = config.FloorCamera ?? true;
-                    _exclusionZones = (config.ExclusionZones != null && config.ExclusionZones.Length > 0) ? config.ExclusionZones.ToList() : null;
+                    
                 }
             }
             else
@@ -655,6 +675,8 @@ namespace CPRTouchVision.Models
                 _minWallDepth = 0;
                 _maxWallDepth = ushort.MaxValue;
                 _floorCamera = true; // default
+                IsAutoMode = true;
+                StartInAutoMode = true;
             }
                 _isConfigGotten = true;
             
@@ -677,7 +699,9 @@ namespace CPRTouchVision.Models
                 _cameraPosition,
                 _cameraRotation.IsIdentity ? null : _cameraRotation,
                 _floorCamera,
-                ExclusionZones
+                ExclusionZones,
+                StartInAutoMode,
+                IsAutoMode
             );
             var json = JsonConvert.SerializeObject(config) ?? "";
 #if DEBUG
@@ -768,6 +792,17 @@ namespace CPRTouchVision.Models
             return ProjectPointOntoPlane(p3D);
         }
 
+        private async Task FinalizeTouchZoneAsync(List<DepthPoint> points) 
+        { 
+            _touchZonePoints.Clear(); 
+            _touchZonePoints.AddRange(points); 
+            IsFittingPlane = false; 
+            await WallPlaneStat(); 
+            await SaveConfig(); 
+            IsTouchZoneSet = true; 
+            CheckIsReadyRunTouchLoop(); 
+        }
+
         public async void AddTouchZonePoint(int pointX, int pointY)
         {
             if (!IsSelectingTouchZone)
@@ -786,16 +821,8 @@ namespace CPRTouchVision.Models
             {
                 // _touchZonePoints = CornerPointsSorter(_touchZonePoints);
                 IsSelectingTouchZone = false;
-                
-                IsFittingPlane = false;
-                await WallPlaneStat();
-                await SaveConfig();
 
-                //IsWallPlaneSet = true;
-                IsTouchZoneSet = true;
-                //IsTouchZoneToggleEnabled = true;
-
-                CheckIsReadyRunTouchLoop();
+                await FinalizeTouchZoneAsync(_touchZonePoints.ToList());
             }
 
         }
@@ -1215,6 +1242,12 @@ namespace CPRTouchVision.Models
             CheckIsReadyRunTouchLoop();
         }
 
+        partial void OnIsAutoModeChanged(bool value)
+        {
+            //if (!IsAutoMode)
+                //StartDefineZone();
+        }
+
         partial void OnCursorChanged(SKPoint value)
         {
             if (!IsRunning)
@@ -1249,13 +1282,13 @@ namespace CPRTouchVision.Models
             CheckIsReadyRunTouchLoop();
         }
 
-
         partial void OnIsWallPlaneSetChanged(bool value)
         {
             WallPlaneStatus = value ? "Set" : "Not Set";
             WallPlaneForeground = new SolidColorBrush(value ? Colors.Green : Colors.OrangeRed);
             CheckIsReadyRunTouchLoop();
         }
+
         partial void OnIsTouchZoneSetChanged(bool value)
         {
             TouchZoneStatus = value ? "Set" : "Not Set";
@@ -1357,6 +1390,38 @@ namespace CPRTouchVision.Models
                     break;
                 default:
                     break;
+            }
+        }
+
+        public async void OnGridLoaded(object sender, RoutedEventArgs e) 
+        
+        {
+            if (StartInAutoMode)
+            {
+                IsAutoMode = true;
+                await AutoDetectTouchZone();
+            }
+            else
+            {
+                await LoadConfig();
+            }
+        }
+
+        public void SwitchCalibrationMode()
+        {
+            IsAutoMode = !IsAutoMode;
+        }
+
+        private async Task AutoDetectTouchZone()
+        {
+            var result = await AutoCalibrator.GetDetectedZonePoints(); 
+            if (result.Success) 
+            {
+                await FinalizeTouchZoneAsync(result.points);
+            } 
+            else 
+            { 
+                ResetTouchZone(); 
             }
         }
 
