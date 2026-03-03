@@ -1,10 +1,12 @@
 ﻿using Microsoft.UI.Windowing;
+using Windows.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using CPRTouchVision.AppWindows;
 
 namespace CPRTouchVision.Models
 {
@@ -62,7 +64,7 @@ namespace CPRTouchVision.Models
             _progress = progress; 
         }
 
-        public async Task RunAsync(CancellationToken token = default)
+        public async Task RunDetectionAsync(CancellationToken token = default)
         {
             try
             {
@@ -104,6 +106,7 @@ namespace CPRTouchVision.Models
             // TODO: plug in AutoCalibrator logic here
             throw new NotImplementedException(); 
         } 
+
     }
 
 }

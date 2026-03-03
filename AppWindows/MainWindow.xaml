@@ -3,7 +3,7 @@
     x:Class="CPRTouchVision.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:CPRTouchVision"
+    xmlns:local="using:CPRTouchVision.Models"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ex="using:WinUIEx"
@@ -17,7 +17,7 @@
 
     <Grid x:Name="Root"
           Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
-          Loaded="OnGridLoaded">
+          Loaded="OnMainWindowLoaded">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="250" />
             <ColumnDefinition Width="*" />
@@ -30,21 +30,51 @@
                 Padding="20">
 
                 <StackPanel Orientation="Horizontal"
-             Spacing="8"
-             Margin="0 0 0 20">
-                    <Image Source="{ThemeResource CprTouchVisionLogo}"
-            Width="40"
-            Height="40" />
-                    <TextBlock Text="CPR Touch Vision"
-                VerticalAlignment="Center"
-                Style="{ThemeResource BodyStrongTextBlockStyle}"/>
-                </StackPanel>
+                     Spacing="8"
+                     Margin="0 0 0 20">
+                <Image Source="{ThemeResource CprTouchVisionLogo}"
+                    Width="40"
+                    Height="40" />
+                <TextBlock Text="CPR Touch Vision"
+                    VerticalAlignment="Center"
+                    Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+            </StackPanel>
 
+                <!-- Hardware Diagnostics -->
+                <TextBlock Text="Hardware Status" Style="{ThemeResource SubtitleTextBlockStyle}" Margin="0 0 0 10"/>
+                <ItemsControl ItemsSource="{x:Bind _manager.HardwareItems, Mode=OneWay}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="local:HardwareStatusItem">
+                            <StackPanel Orientation="Horizontal" Margin="0 4 0 0">
+                                <TextBlock Text="{x:Bind Name, Mode=OneWay}" Width="120"/>
+                                <TextBlock Text="{x:Bind Status, Mode=OneWay}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <!-- Hardware Ready Banner -->
+                <Border Background="{ThemeResource SystemFillColorSuccessBrush}" Padding="8" CornerRadius="4" Margin="0 10 0 0" Visibility="{x:Bind BoolToVis(_manager.IsHardwareReady), Mode=OneWay}">
+                    <TextBlock Text="Hardware Ready" Foreground="White" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                </Border>
+                <!-- Auto Start Toggle -->
+                <ToggleSwitch Header="Auto‑start Calibration" IsOn="{x:Bind _manager.AutoStartCalibration, Mode=TwoWay}" Margin="0 10 0 0"/>
+                <!-- Start Auto Calibration Button -->
+                <Button Content="Start Auto Calibration"
+                    Click="OnStartAutoCalibrationClicked"
+                    HorizontalAlignment="Stretch"
+                    Margin="0 10 0 0"
+                    IsEnabled="{x:Bind _manager.CanStartAutoCalibration, Mode=OneWay}" />
+
+                <Button Content="{x:Bind _manager.StartStopCalibration, Mode=OneWay}"
+                    Click="OnStartStopClicked"
+                    HorizontalAlignment="Stretch" 
+                    Margin="0 10 0 0"    />
+
+                <ToggleSwitch Header="Auto‑Start Auto Calibration"
+                    IsOn="{x:Bind _manager.AutoStartCalibration, Mode=TwoWay}"
+                    Margin="0 10 0 0"
+                    IsEnabled="{x:Bind _manager.IsAutoMode, Mode=OneWay}" />
                 
-                <Button Content="{x:Bind _manager.ToggleTitle, Mode=OneWay}"
-                Click="OnToggleClicked"
-                HorizontalAlignment="Stretch" />
-
                 <ToggleSwitch
                     Header="Calibration Mode"
                     OnContent="Auto"

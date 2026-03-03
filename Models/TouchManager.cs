@@ -15,6 +15,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -29,10 +30,10 @@ using OB = OBSharp.Sensor;
 
 namespace CPRTouchVision.Models
 {
-    internal partial class TouchManager : ObservableObject, IDisposable
+    internal partial class TouchManager : ObservableObject, ICalibrationProgress, IDisposable
     {
         [ObservableProperty]
-        string _toggleTitle = "Start";
+        string _startStopCalibration = "Start";
 
         [ObservableProperty]
         bool _isAutoMode = true;
@@ -108,6 +109,54 @@ namespace CPRTouchVision.Models
 
         [ObservableProperty]
         private bool _isCameraPositionDefined;
+
+        [ObservableProperty]
+        private string hardwareStatusSummary;
+
+        [ObservableProperty] 
+        private bool isHardwareReady; 
+        
+        [ObservableProperty] 
+        private bool autoStartCalibration; 
+        
+        [ObservableProperty] 
+        private ObservableCollection<HardwareStatusItem> hardwareItems = new();
+
+        [ObservableProperty] 
+        private string calibrationStatus; 
+        
+        [ObservableProperty] 
+        private double calibrationProgress;
+
+        public void OnStatus(string message) 
+        { 
+            CalibrationStatus = message; 
+        }
+        public void OnProgress(double percent) 
+        { 
+            CalibrationProgress = percent; 
+        }
+        //public void OnPointDetected(Point3D point)
+        //{ // Optional: draw on canvas or store points }
+        
+        public async void OnCompleted(List<DepthPoint> points) 
+        { 
+            await FinalizeTouchZoneAsync(points); 
+        } 
+        public void OnFailed(string reason) 
+        { 
+            CalibrationStatus = $"Failed: {reason}"; 
+        }
+
+
+        private readonly Dictionary<string, StatusCode> _hardwareStates = new();
+        
+        private readonly List<IHardwareChecker> _checkers = new();
+
+        public IReadOnlyList<IHardwareChecker> Checkers => _checkers;
+
+        public bool CanStartAutoCalibration => IsAutoMode && IsHardwareReady && !AutoStartCalibration;
+        
 
         public DispatcherQueue UIDispatcherQueue { get; set; }
         
@@ -199,7 +248,6 @@ namespace CPRTouchVision.Models
         private int _targetFrames = 30;        
         private int _accCapacityPerPixel = 30;
 
-
         public TouchManager()
         {
             _fsize = _fw * _fh;
@@ -217,6 +265,61 @@ namespace CPRTouchVision.Models
             IsCameraPositionDefined = false;
         }
 
+        public void RegisterHardware(IHardwareChecker checker) 
+        {
+            /*
+            _checkers.Add(checker); 
+            _hardwareStates[checker.DeviceName] = StatusCode.Pending;
+
+            HardwareItems = _hardwareStates
+                .Select(kvp => new HardwareStatusItem { Name = kvp.Key, Status = kvp.Value })
+                .ToList();
+
+            checker.OnStatusChanged += status => 
+            { 
+                _hardwareStates[checker.DeviceName] = status; 
+                UpdateHardwareSummary(); 
+            }; 
+            */
+            // 1. Store the logic object so CheckConnection() can be called in the loop
+            _checkers.Add(checker);
+
+            // 2. Create the UI object
+            var newItem = new HardwareStatusItem { 
+                Name = checker.DeviceName, 
+                Status = StatusCode.Pending 
+            };
+
+            // 3. Add to the UI collection (Ensure HardwareItems is an ObservableCollection)
+            HardwareItems.Add(newItem);
+
+            // 4. Hook up the event with the UI Dispatcher
+            checker.OnStatusChanged += (status) =>
+            {
+                // Use the dispatcher you assigned in MainWindow!
+                UIDispatcherQueue?.TryEnqueue(() =>
+                {
+                    newItem.Status = status;
+#if DEBUG
+                    Debug.WriteLine($"newItem.Status = {newItem.Status}");
+                    Debug.WriteLine($"status = {status}");
+#endif
+                });
+            };
+        }
+        
+        private void UpdateHardwareUI() 
+        { 
+
+            IsHardwareReady = _hardwareStates.Values.All(s => s == StatusCode.Connected); 
+        }
+
+        private void UpdateHardwareSummary() 
+        { 
+            HardwareStatusSummary = string.Join(", ", 
+                _hardwareStates.Select(kvp => $"{kvp.Key}: {kvp.Value}")); 
+        }
+        
         public void Undo()
         {
             if (IsSelectingTouchZone && _touchZonePoints.Count > 0)
@@ -1233,19 +1336,13 @@ namespace CPRTouchVision.Models
 
         partial void OnIsRunningChanged(bool value)
         {
-            ToggleTitle = IsRunning ? "Stop" : "Start";
+            StartStopCalibration = IsRunning ? "Stop" : "Start";
             //IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
             // Enable the touch zone toggle only when the app is running, the wall plane is defined,
             // we are not currently selecting the touch zone, and we are not fitting a plane.
             //IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
             IsTouchZoneToggleEnabled = value; // !IsSelectingTouchZone && !IsTouchZoneDefining;
             CheckIsReadyRunTouchLoop();
-        }
-
-        partial void OnIsAutoModeChanged(bool value)
-        {
-            //if (!IsAutoMode)
-                //StartDefineZone();
         }
 
         partial void OnCursorChanged(SKPoint value)
@@ -1393,36 +1490,23 @@ namespace CPRTouchVision.Models
             }
         }
 
-        public async void OnGridLoaded(object sender, RoutedEventArgs e) 
-        
-        {
-            if (StartInAutoMode)
-            {
-                IsAutoMode = true;
-                await AutoDetectTouchZone();
-            }
-            else
-            {
-                await LoadConfig();
-            }
+
+        partial void OnAutoStartCalibrationChanged(bool value) 
+        { 
+            OnPropertyChanged(nameof(CanStartAutoCalibration)); 
         }
 
-        public void SwitchCalibrationMode()
+        partial void OnIsHardwareReadyChanged(bool value) 
         {
-            IsAutoMode = !IsAutoMode;
+            OnPropertyChanged(nameof(CanStartAutoCalibration)); 
         }
 
-        private async Task AutoDetectTouchZone()
+        partial void OnIsAutoModeChanged(bool value) 
         {
-            var result = await AutoCalibrator.GetDetectedZonePoints(); 
-            if (result.Success) 
-            {
-                await FinalizeTouchZoneAsync(result.points);
-            } 
-            else 
-            { 
-                ResetTouchZone(); 
-            }
+            if (!value) AutoStartCalibration = false; // Auto-start only valid in Auto mode
+
+
+            OnPropertyChanged(nameof(CanStartAutoCalibration)); 
         }
 
         public void Dispose()

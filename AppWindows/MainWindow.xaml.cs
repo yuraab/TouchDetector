@@ -1,15 +1,17 @@
 using CPRTouchVision.Models;
+using Emgu.CV.Mcc;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
 using System;
-using Windows.System;
-using System.Linq;
-using WinUIEx;
-using Microsoft.UI.Xaml.Controls;
 using System.Diagnostics;
+using System.Linq;
+using System.Threading.Tasks;
+using Windows.System;
+using WinUIEx;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -22,6 +24,8 @@ namespace CPRTouchVision
     public sealed partial class MainWindow : WindowEx
     {
         private TouchManager _manager = new();
+        private AutoCalibrationService _autoCalibrator;
+        private readonly ProjectorService _projectorService;
         private float _cw = 1.0f;
         private float _ch = 1.0f;
         private readonly TimeSpan touchDisplayTime = TimeSpan.FromSeconds(2);
@@ -29,14 +33,31 @@ namespace CPRTouchVision
         public MainWindow()
         {
             ExtendsContentIntoTitleBar = true;
+
+            // Load config early
             _ = _manager.LoadConfig();
             Debug.WriteLine("loaded config");
+            
             InitializeComponent();
 
             // Give manager a reference to the UI dispatcher
             _manager.UIDispatcherQueue = this.DispatcherQueue;
 
+            // Init projector service (implements IProjectorDisplay)
+            _projectorService = new ProjectorService();
+
+            // Initialize AutoCalibrator AFTER UI is ready
+            _autoCalibrator = new AutoCalibrationService(_projectorService, _manager);
+
+            // Register hardware checkers
+            _manager.UIDispatcherQueue = this.DispatcherQueue;
+            _manager.RegisterHardware(new CameraChecker());
+            _manager.RegisterHardware(new ProjectorChecker());
+
+            // Manager event hookup
             _manager.Changed += OnManagerChanged;
+
+            // Ctrl+Z accelerator
             var ctrlZ = new KeyboardAccelerator()
             {
                 Key = VirtualKey.Z,
@@ -45,9 +66,7 @@ namespace CPRTouchVision
             ctrlZ.Invoked += CtrlZ_Invoked;
 
             Root.KeyboardAccelerators.Add(ctrlZ);
-            ToolTipService.SetToolTip(Root, null);
-            //(this.Content as UIElement)?.KeyboardAccelerators.Add(ctrlZ);
-            //(this.Connect as UIElement).toolti
+            ToolTipService.SetToolTip(this.Root, null);
         }
 
         private void CtrlZ_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -56,7 +75,60 @@ namespace CPRTouchVision
             args.Handled = true;
         }
 
-        private void OnToggleClicked(object sender, RoutedEventArgs e)
+        public Visibility BoolToVis(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
+
+        private async void OnMainWindowLoaded(object sender, RoutedEventArgs e)
+        {
+            Debug.WriteLine("=== OnMainWindowLoaded Started ==="); // Check if this prints
+            try
+            {
+                // Check if _manager or Checkers is null
+                if (_manager?.Checkers == null)
+                {
+                    Debug.WriteLine("Error: _manager or Checkers is null!");
+                    return;
+                }
+
+                ToolTipService.SetToolTip(Root, null);
+                // Run all hardware checks in parallel
+                //await Task.WhenAll(_manager.Checkers.Select(c => c.CheckConnection()));
+
+                Debug.WriteLine($"Triggering check for: {_manager.Checkers.Count} devices");
+
+                foreach (var checker in _manager.Checkers)
+                {
+                    Debug.WriteLine($"Triggering check for: {checker.DeviceName}");
+                    await checker.CheckConnection();
+                    Debug.WriteLine($"Finished check for: {checker.DeviceName}");
+                }
+
+                Debug.WriteLine("=== All Checks Finished ===");
+                // Test
+                Bindings.Update();
+
+                if (_manager.IsAutoMode &&
+                    _manager.AutoStartCalibration &&
+                    _manager.IsHardwareReady)
+                {
+                    await _autoCalibrator.RunDetectionAsync();
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error during hardware initialization: {ex}");
+                // Optionally show a message to the user here
+            }
+            
+        }
+
+        private async void OnStartAutoCalibrationClicked(object sender, RoutedEventArgs e) 
+        { 
+            if (_manager.CanStartAutoCalibration) 
+                await _autoCalibrator.RunDetectionAsync(); 
+        }
+
+        private void OnStartStopClicked(object sender, RoutedEventArgs e)
         {
             _manager.Toggle();
         }

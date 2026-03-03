@@ -20,10 +20,7 @@
     <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
   </PropertyGroup>
-  <!-- If you want to override default item inference -->
-  <ItemGroup>
-    <None Remove="Windows\InitWindow.xaml" />
-  </ItemGroup>
+
   <!-- Ensure ALL assets are actually Content (Include, not Update) -->
   <ItemGroup>
     <Content Include="Assets\favicon.ico" CopyToOutputDirectory="PreserveNewest" />
@@ -73,7 +70,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Page Update="Windows\InitWindow.xaml">
+    <Page Update="AppWindows\InitWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>
