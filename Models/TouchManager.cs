@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using ComputeSharp;
 using CPRLib;
 using Emgu.CV;
@@ -114,8 +115,14 @@ namespace CPRTouchVision.Models
         private string hardwareStatusSummary;
 
         [ObservableProperty] 
-        private bool isHardwareReady; 
-        
+        private bool isHardwareReady;
+
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(IsHardwareReady))]
+        [NotifyPropertyChangedFor(nameof(CanStartCalibration))]
+        [NotifyPropertyChangedFor(nameof(HardwareErrorMessage))]
+        private bool _allHardwareConnected;
+
         [ObservableProperty] 
         private bool autoStartCalibration; 
         
@@ -128,6 +135,33 @@ namespace CPRTouchVision.Models
         [ObservableProperty] 
         private double calibrationProgress;
 
+        [ObservableProperty]
+        private bool _isDeviceChecking;
+
+        public event EventHandler HardwareChecksCompleted;
+
+        // This command can be bound directly to a Button's Command property
+        [RelayCommand(CanExecute = nameof(CanRetry))]
+        private async Task RunAllHardwareChecksAsync()
+        {
+            IsDeviceChecking = true;
+
+            // Reset all statuses to Pending before starting
+            foreach (var item in HardwareItems) item.Status = StatusCode.Pending;
+
+            // Run all checks in parallel
+            var tasks = _checkers.Select(c => c.CheckConnection());
+            await Task.WhenAll(tasks);
+
+            IsDeviceChecking = false;
+            UpdateHardwareReadiness();
+
+            // Notify MainWindow listening 
+            HardwareChecksCompleted?.Invoke(this, EventArgs.Empty);
+        }
+
+        private bool CanRetry() => !IsDeviceChecking;
+
         public void OnStatus(string message) 
         { 
             CalibrationStatus = message; 
@@ -138,7 +172,12 @@ namespace CPRTouchVision.Models
         }
         //public void OnPointDetected(Point3D point)
         //{ // Optional: draw on canvas or store points }
-        
+
+        // Message to show when hardware is missing
+        public string HardwareErrorMessage => AllHardwareConnected
+            ? ""
+            : "Please ensure all devices are connected to start.";
+
         public async void OnCompleted(List<DepthPoint> points) 
         { 
             await FinalizeTouchZoneAsync(points); 
@@ -155,8 +194,18 @@ namespace CPRTouchVision.Models
 
         public IReadOnlyList<IHardwareChecker> Checkers => _checkers;
 
+        // This controls the AutoStart button IsEnabled
         public bool CanStartAutoCalibration => IsAutoMode && IsHardwareReady && !AutoStartCalibration;
-        
+
+        // This controls the Start button IsEnabled
+        public bool CanStartCalibration => AllHardwareConnected;
+
+        private void UpdateHardwareReadiness()
+        {
+            // Check if every item in the list has a 'Connected' status
+            AllHardwareConnected = HardwareItems.Count > 0 &&
+                                   HardwareItems.All(x => x.Status == StatusCode.Connected);
+        }
 
         public DispatcherQueue UIDispatcherQueue { get; set; }
         
@@ -304,10 +353,13 @@ namespace CPRTouchVision.Models
                     Debug.WriteLine($"newItem.Status = {newItem.Status}");
                     Debug.WriteLine($"status = {status}");
 #endif
+                    // Update the global state
+                    UpdateHardwareReadiness();
                 });
             };
         }
-        
+
+        /*
         private void UpdateHardwareUI() 
         { 
 
@@ -319,7 +371,8 @@ namespace CPRTouchVision.Models
             HardwareStatusSummary = string.Join(", ", 
                 _hardwareStates.Select(kvp => $"{kvp.Key}: {kvp.Value}")); 
         }
-        
+        */
+
         public void Undo()
         {
             if (IsSelectingTouchZone && _touchZonePoints.Count > 0)
@@ -1490,12 +1543,12 @@ namespace CPRTouchVision.Models
             }
         }
 
-
+        
         partial void OnAutoStartCalibrationChanged(bool value) 
         { 
             OnPropertyChanged(nameof(CanStartAutoCalibration)); 
         }
-
+        
         partial void OnIsHardwareReadyChanged(bool value) 
         {
             OnPropertyChanged(nameof(CanStartAutoCalibration)); 

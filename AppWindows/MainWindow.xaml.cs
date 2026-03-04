@@ -56,6 +56,8 @@ namespace CPRTouchVision
 
             // Manager event hookup
             _manager.Changed += OnManagerChanged;
+            // Subscribe to the completion event
+            _manager.HardwareChecksCompleted += OnHardwareChecksCompleted;
 
             // Ctrl+Z accelerator
             var ctrlZ = new KeyboardAccelerator()
@@ -77,11 +79,30 @@ namespace CPRTouchVision
 
         public Visibility BoolToVis(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
+        public Visibility GetErrorVisibility(bool isReady, bool isChecking)
+        {
+            // Hide error if hardware is ready OR if we are currently in the middle of a check
+            return (!isReady && !isChecking) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private async void OnHardwareChecksCompleted(object sender, EventArgs e)
+        {
+            // This runs after BOTH manual retries and the initial startup check
+            if (_manager.IsAutoMode &&
+                _manager.AutoStartCalibration &&
+                _manager.IsHardwareReady)
+            {
+                Debug.WriteLine("Auto-conditions met. Starting calibration...");
+                await _autoCalibrator.RunDetectionAsync();
+            }
+        }
+
         private async void OnMainWindowLoaded(object sender, RoutedEventArgs e)
         {
             Debug.WriteLine("=== OnMainWindowLoaded Started ==="); // Check if this prints
             try
             {
+                /*
                 // Check if _manager or Checkers is null
                 if (_manager?.Checkers == null)
                 {
@@ -90,8 +111,6 @@ namespace CPRTouchVision
                 }
 
                 ToolTipService.SetToolTip(Root, null);
-                // Run all hardware checks in parallel
-                //await Task.WhenAll(_manager.Checkers.Select(c => c.CheckConnection()));
 
                 Debug.WriteLine($"Triggering check for: {_manager.Checkers.Count} devices");
 
@@ -105,13 +124,9 @@ namespace CPRTouchVision
                 Debug.WriteLine("=== All Checks Finished ===");
                 // Test
                 Bindings.Update();
-
-                if (_manager.IsAutoMode &&
-                    _manager.AutoStartCalibration &&
-                    _manager.IsHardwareReady)
-                {
-                    await _autoCalibrator.RunDetectionAsync();
-                }
+                */
+                // 1. Run the unified check logic via the Command
+                await _manager.RunAllHardwareChecksCommand.ExecuteAsync(null);
 
             }
             catch (Exception ex)

@@ -52,12 +52,45 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                
                 <!-- Hardware Ready Banner -->
-                <Border Background="{ThemeResource SystemFillColorSuccessBrush}" Padding="8" CornerRadius="4" Margin="0 10 0 0" Visibility="{x:Bind BoolToVis(_manager.IsHardwareReady), Mode=OneWay}">
+                <Border Background="{ThemeResource SystemFillColorSuccessBrush}" 
+                        Padding="8" 
+                        CornerRadius="4" 
+                        Margin="0 10 0 0" 
+                        Visibility="{x:Bind BoolToVis(_manager.IsHardwareReady), Mode=OneWay}">
                     <TextBlock Text="Hardware Ready" Foreground="White" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
                 </Border>
+
+                <!-- Hardware Retry Buttton -->
+                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0 10 0 0">
+                    <Button Content="Retry Connection" 
+                        Command="{x:Bind _manager.RunAllHardwareChecksCommand}" 
+                        HorizontalAlignment="Left"/>
+
+                    <!-- Optional: Loading indicator while checking -->
+                    <ProgressRing IsActive="{x:Bind _manager.IsDeviceChecking, Mode=OneWay}" 
+                  Width="20" Height="20" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Error Notification (Shown when NOT ready) -->
+                <Border Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}" 
+                        Padding="8" 
+                        CornerRadius="4" 
+                        Margin="0 10 0 0" 
+                        Visibility="{x:Bind GetErrorVisibility(_manager.IsHardwareReady, _manager.IsDeviceChecking), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        
+                        <TextBlock Text="{x:Bind _manager.HardwareErrorMessage, Mode=OneWay}" 
+                           Foreground="{ThemeResource SystemFillColorCriticalBrush}" 
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Auto Start Toggle -->
                 <ToggleSwitch Header="Auto‑start Calibration" IsOn="{x:Bind _manager.AutoStartCalibration, Mode=TwoWay}" Margin="0 10 0 0"/>
+               
                 <!-- Start Auto Calibration Button -->
                 <Button Content="Start Auto Calibration"
                     Click="OnStartAutoCalibrationClicked"

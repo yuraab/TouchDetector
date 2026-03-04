@@ -29,29 +29,6 @@ namespace CPRTouchVision.Models
 
         [ObservableProperty]
         private StatusCode status;
-        /*
-        public StatusCode Status
-        {
-            get => status;
-            set
-            {
-                if (status != value)
-                {
-                    status = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-        
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        // This helper method notifies the UI to refresh the binding
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-        */
     }
 
     public interface IHardwareChecker 
