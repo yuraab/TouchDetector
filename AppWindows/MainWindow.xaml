@@ -19,25 +19,26 @@
           Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
           Loaded="OnMainWindowLoaded">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="250" />
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="1*" MinWidth="250" MaxWidth="400" />
+            <ColumnDefinition Width="4*" />
         </Grid.ColumnDefinitions>
 
         <ScrollView>
             <StackPanel Orientation="Vertical"
-                BorderBrush="#EFEFEF"
-                BorderThickness="0 0 1 0"
-                Padding="20">
+                        HorizontalAlignment="Stretch"
+                        BorderBrush="#EFEFEF"
+                        BorderThickness="0 0 1 0"
+                        Padding="20">
 
                 <StackPanel Orientation="Horizontal"
-                     Spacing="8"
-                     Margin="0 0 0 20">
+                            Spacing="8"
+                            Margin="0 0 0 20">
                 <Image Source="{ThemeResource CprTouchVisionLogo}"
-                    Width="40"
-                    Height="40" />
+                       Width="40"
+                       Height="40" />
                 <TextBlock Text="CPR Touch Vision"
-                    VerticalAlignment="Center"
-                    Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+                           VerticalAlignment="Center"
+                           Style="{ThemeResource BodyStrongTextBlockStyle}"/>
             </StackPanel>
 
                 <!-- Hardware Diagnostics -->
@@ -172,9 +173,9 @@
               Padding="20 40 20 20">
             <StackPanel Orientation="Vertical">
                 <Border BorderBrush="#EFEFEF"
-                    BorderThickness="1"
-                    VerticalAlignment="Top"
-                    HorizontalAlignment="Left">
+                        BorderThickness="1"
+                        VerticalAlignment="Top"
+                        HorizontalAlignment="Stretch">
                     <Viewbox Stretch="Uniform">
                         <sk:SKXamlCanvas x:Name="Canvas"
                                      Width="1280"
