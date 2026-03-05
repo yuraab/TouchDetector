@@ -19,11 +19,14 @@
           Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
           Loaded="OnMainWindowLoaded">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1*" MinWidth="250" MaxWidth="400" />
+            <ColumnDefinition x:Name="SidebarColumn"
+                              Width="1*" 
+                              MinWidth="250" MaxWidth="400" />
             <ColumnDefinition Width="4*" />
         </Grid.ColumnDefinitions>
 
-        <ScrollView>
+        <!-- Sidebar Column -->
+        <ScrollView x:Name="SidebarContainer" Grid.Column="0">
             <StackPanel Orientation="Vertical"
                         HorizontalAlignment="Stretch"
                         BorderBrush="#EFEFEF"
@@ -169,8 +172,18 @@
         </ScrollView>
 
         <!-- Canvas View -->
-        <Grid Grid.Column="1"
-              Padding="20 40 20 20">
+        <Grid Grid.Column="1">
+            <!-- 1. The Toggle Button (Binding the Click event) -->
+            <Button Click="ToggleSidebar_Click" 
+                    VerticalAlignment="Top" 
+                    HorizontalAlignment="Left" 
+                    Margin="10"
+                    Canvas.ZIndex="10"
+                    Background="Transparent"
+                    BorderBrush="Transparent">
+                <SymbolIcon Symbol="GlobalNavigationButton"/>
+            </Button>
+            
             <StackPanel Orientation="Vertical">
                 <Border BorderBrush="#EFEFEF"
                         BorderThickness="1"

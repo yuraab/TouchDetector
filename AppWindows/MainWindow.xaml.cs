@@ -29,7 +29,10 @@ namespace CPRTouchVision
         private float _cw = 1.0f;
         private float _ch = 1.0f;
         private readonly TimeSpan touchDisplayTime = TimeSpan.FromSeconds(2);
-
+        private bool _isSidebarVisible = true;
+        // Keep track of the last width to restore it
+        private GridLength _lastSidebarWidth = new GridLength(1, GridUnitType.Star);
+        
         public MainWindow()
         {
             ExtendsContentIntoTitleBar = true;
@@ -83,6 +86,27 @@ namespace CPRTouchVision
         {
             // Hide error if hardware is ready OR if we are currently in the middle of a check
             return (!isReady && !isChecking) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
+        {
+            _isSidebarVisible = !_isSidebarVisible;
+
+            if (_isSidebarVisible)
+            {
+                // Restore column width and show content
+                SidebarColumn.Width = _lastSidebarWidth;
+                SidebarColumn.MinWidth = 250; // Restore constraint
+                SidebarContainer.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                // Save current width, then collapse
+                _lastSidebarWidth = SidebarColumn.Width;
+                SidebarColumn.Width = new GridLength(0);
+                SidebarColumn.MinWidth = 0; // Remove constraint so it can hit 0
+                SidebarContainer.Visibility = Visibility.Collapsed;
+            }
         }
 
         private async void OnHardwareChecksCompleted(object sender, EventArgs e)
