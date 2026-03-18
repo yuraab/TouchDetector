@@ -1,3 +1,4 @@
+using CPRTouchVision.AppWindows;
 using CPRTouchVision.Models;
 using Emgu.CV.Mcc;
 using Microsoft.UI.Input;
@@ -25,14 +26,14 @@ namespace CPRTouchVision
     {
         private TouchManager _manager = new();
         private AutoCalibrationService _autoCalibrator;
-        private readonly ProjectorService _projectorService;
+        //private readonly ProjectorService _projectorService;
         private float _cw = 1.0f;
         private float _ch = 1.0f;
         private readonly TimeSpan touchDisplayTime = TimeSpan.FromSeconds(2);
         private bool _isSidebarVisible = true;
         // Keep track of the last width to restore it
         private GridLength _lastSidebarWidth = new GridLength(1, GridUnitType.Star);
-        
+        public static Microsoft.UI.Dispatching.DispatcherQueue UI;
         public MainWindow()
         {
             ExtendsContentIntoTitleBar = true;
@@ -45,12 +46,13 @@ namespace CPRTouchVision
 
             // Give manager a reference to the UI dispatcher
             _manager.UIDispatcherQueue = this.DispatcherQueue;
+            UI = this.DispatcherQueue;
 
             // Init projector service (implements IProjectorDisplay)
-            _projectorService = new ProjectorService();
+            //_projectorService = new ProjectorService();
 
             // Initialize AutoCalibrator AFTER UI is ready
-            _autoCalibrator = new AutoCalibrationService(_projectorService, _manager);
+            _autoCalibrator = new AutoCalibrationService(_manager);
 
             // Register hardware checkers
             _manager.UIDispatcherQueue = this.DispatcherQueue;
@@ -114,7 +116,7 @@ namespace CPRTouchVision
             // This runs after BOTH manual retries and the initial startup check
             if (_manager.IsAutoMode &&
                 _manager.AutoStartCalibration &&
-                _manager.IsHardwareReady)
+                _manager.CanStartCalibration)
             {
                 Debug.WriteLine("Auto-conditions met. Starting calibration...");
                 await _autoCalibrator.RunDetectionAsync();
@@ -151,7 +153,7 @@ namespace CPRTouchVision
                 */
                 // 1. Run the unified check logic via the Command
                 await _manager.RunAllHardwareChecksCommand.ExecuteAsync(null);
-
+                _manager.StartStopCapture();
             }
             catch (Exception ex)
             {
@@ -162,14 +164,17 @@ namespace CPRTouchVision
         }
 
         private async void OnStartAutoCalibrationClicked(object sender, RoutedEventArgs e) 
-        { 
-            if (_manager.CanStartAutoCalibration) 
-                await _autoCalibrator.RunDetectionAsync(); 
+        {
+            // 1. Ensure the camera/projector is running so detection can see them
+            if (!_manager.IsRunning) _manager.StartStopCapture();
+            
+            // 2. Run the auto-detection logic
+            await _autoCalibrator.RunDetectionAsync(); 
         }
 
         private void OnStartStopClicked(object sender, RoutedEventArgs e)
         {
-            _manager.Toggle();
+            _manager.StartStopCapture();
         }
 
         private void OnDefineTouchZoneClicked(object? sender, RoutedEventArgs e)
@@ -353,7 +358,7 @@ namespace CPRTouchVision
  
                 Debug.WriteLine($"Selected point with x={x}, y={y}. FW={_manager.FW}, FH={_manager.FH}");
 
-                if (_manager.IsSelectingTouchZone)
+                if (_manager.IsSelectingTouchZone && !_manager.AutoStartCalibration)
                 {
                     _manager.AddTouchZonePoint(x, y);
                 }
@@ -364,7 +369,7 @@ namespace CPRTouchVision
         private void OnGridLoaded(object sender, RoutedEventArgs e)
         {
             if (App.Current.AutoTrack)
-                DispatcherQueue.TryEnqueue(() => _manager.Toggle());
+                DispatcherQueue.TryEnqueue(() => _manager.StartStopCapture());
         }
     }
 }

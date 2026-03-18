@@ -34,7 +34,7 @@ namespace CPRTouchVision.Models
     internal partial class TouchManager : ObservableObject, ICalibrationProgress, IDisposable
     {
         [ObservableProperty]
-        string _startStopCalibration = "Start";
+        string _toglleStartStop = "Start";
 
         [ObservableProperty]
         bool _isAutoMode = true;
@@ -160,6 +160,16 @@ namespace CPRTouchVision.Models
             HardwareChecksCompleted?.Invoke(this, EventArgs.Empty);
         }
 
+        // request frame for calibration,
+        // MainWindow will call this when auto-calibration is started,
+        // and complete the TaskCompletionSource when the frame is ready
+        private TaskCompletionSource<CalibrationFrame>? _calibrationRequest;
+        public Task<CalibrationFrame> GetNextCalibrationFrameAsync(System.Threading.CancellationToken token)
+        {
+            _calibrationRequest = new TaskCompletionSource<CalibrationFrame>();
+            return _calibrationRequest.Task;
+        }
+
         private bool CanRetry() => !IsDeviceChecking;
 
         public void OnStatus(string message) 
@@ -178,9 +188,14 @@ namespace CPRTouchVision.Models
             ? ""
             : "Please ensure all devices are connected to start.";
 
-        public async void OnCompleted(List<DepthPoint> points) 
+        public async void OnCompleted(Point[] points) 
         { 
-            await FinalizeTouchZoneAsync(points); 
+            foreach (var point in points) {
+                var projectedPoint = Convert2DToDepthPoint((int) point.X, (int) point.Y);
+
+                _touchZonePoints.Add(projectedPoint);
+            }
+            await FinalizeTouchZoneAsync(); 
         } 
         public void OnFailed(string reason) 
         { 
@@ -379,7 +394,7 @@ namespace CPRTouchVision.Models
                 _touchZonePoints.RemoveAt(_touchZonePoints.Count - 1);
         }
 
-        public void Toggle()
+        public void StartStopCapture()
         {
             if (IsRunning)
                 Stop();
@@ -556,6 +571,26 @@ namespace CPRTouchVision.Models
                 {
                     bitmap.InstallPixels(_colorBitmapInfo, colorImage.Buffer);
                 });
+                if (_calibrationRequest != null)
+                {
+                    int totalBytes = colorImage.SizeBytes;
+
+                    //  Create the managed destination array
+                    byte[] managedColorData = new byte[totalBytes];
+
+                    //  Copy from the raw pointer (nint) to a new array to avoid disposal issues
+                    System.Runtime.InteropServices.Marshal.Copy(colorImage.Buffer, managedColorData, 0, totalBytes);
+
+                    var frame = new CalibrationFrame
+                    {
+                        ColorData = managedColorData, 
+                        Width = _fw,
+                        Height = _fh
+                    };
+                    _calibrationRequest.TrySetResult(frame);
+                    _calibrationRequest = null; // Clear request after fulfilling it
+                }
+                    
             }
 
             using var depthImage = capture.DepthImage;
@@ -783,10 +818,11 @@ namespace CPRTouchVision.Models
                 
                 if (JsonConvert.DeserializeObject<Config>(json) is Config config)
                 {
-                    StartInAutoMode = config.StartInAutoMode ?? false;
+                    StartInAutoMode = config.StartInAutoMode ?? true;
                     if (StartInAutoMode)
                     {
                         IsAutoMode = true;
+                        AutoStartCalibration = true;
                     }
                     else
                     {
@@ -832,7 +868,7 @@ namespace CPRTouchVision.Models
                 _maxWallDepth = ushort.MaxValue;
                 _floorCamera = true; // default
                 IsAutoMode = true;
-                StartInAutoMode = true;
+
             }
                 _isConfigGotten = true;
             
@@ -948,10 +984,14 @@ namespace CPRTouchVision.Models
             return ProjectPointOntoPlane(p3D);
         }
 
-        private async Task FinalizeTouchZoneAsync(List<DepthPoint> points) 
+        private async Task FinalizeTouchZoneAsync(List<DepthPoint>? points =null) 
         { 
-            _touchZonePoints.Clear(); 
-            _touchZonePoints.AddRange(points); 
+            if (points != null)
+            {
+                _touchZonePoints.Clear();
+                _touchZonePoints.AddRange(points);
+            }
+             
             IsFittingPlane = false; 
             await WallPlaneStat(); 
             await SaveConfig(); 
@@ -1389,7 +1429,7 @@ namespace CPRTouchVision.Models
 
         partial void OnIsRunningChanged(bool value)
         {
-            StartStopCalibration = IsRunning ? "Stop" : "Start";
+            ToglleStartStop = IsRunning ? "Stop" : "Start";
             //IsCalibrationToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane;
             // Enable the touch zone toggle only when the app is running, the wall plane is defined,
             // we are not currently selecting the touch zone, and we are not fitting a plane.
@@ -1606,5 +1646,12 @@ namespace CPRTouchVision.Models
     public class ConfigMissingException : Exception
     {
         public ConfigMissingException(string message) : base(message) { }
+    }
+
+    public class CalibrationFrame
+    {
+        public byte[] ColorData { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
     }
 }

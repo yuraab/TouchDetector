@@ -73,8 +73,9 @@
                         HorizontalAlignment="Left"/>
 
                     <!-- Optional: Loading indicator while checking -->
-                    <ProgressRing IsActive="{x:Bind _manager.IsDeviceChecking, Mode=OneWay}" 
-                  Width="20" Height="20" VerticalAlignment="Center"/>
+                    <ProgressRing   IsActive="{x:Bind _manager.IsDeviceChecking, Mode=OneWay}" 
+                                    Width="20" Height="20" 
+                                    VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Error Notification (Shown when NOT ready) -->
@@ -86,39 +87,39 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         
                         <TextBlock Text="{x:Bind _manager.HardwareErrorMessage, Mode=OneWay}" 
-                           Foreground="{ThemeResource SystemFillColorCriticalBrush}" 
-                           Style="{ThemeResource CaptionTextBlockStyle}"
-                           VerticalAlignment="Center"/>
+                                   Foreground="{ThemeResource SystemFillColorCriticalBrush}" 
+                                   Style="{ThemeResource CaptionTextBlockStyle}"
+                                   VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Auto Start Toggle -->
+                <!-- Auto Start Toggle 
                 <ToggleSwitch Header="Auto‑start Calibration" IsOn="{x:Bind _manager.AutoStartCalibration, Mode=TwoWay}" Margin="0 10 0 0"/>
-               
+                -->
+
                 <!-- Start Auto Calibration Button -->
                 <Button Content="Start Auto Calibration"
-                    Click="OnStartAutoCalibrationClicked"
-                    HorizontalAlignment="Stretch"
-                    Margin="0 10 0 0"
-                    IsEnabled="{x:Bind _manager.CanStartAutoCalibration, Mode=OneWay}" />
+                        Click="OnStartAutoCalibrationClicked"
+                        HorizontalAlignment="Stretch"
+                        Margin="0 10 0 0"
+                        IsEnabled="{x:Bind _manager.CanStartAutoCalibration, Mode=OneWay}" />
 
-                <Button Content="{x:Bind _manager.StartStopCalibration, Mode=OneWay}"
-                    Click="OnStartStopClicked"
-                    HorizontalAlignment="Stretch" 
-                    Margin="0 10 0 0"    />
+                <Button Content="{x:Bind _manager.ToglleStartStop, Mode=OneWay}"
+                        Click="OnStartStopClicked"
+                        HorizontalAlignment="Stretch" 
+                        Margin="0 10 0 0"    />
 
-                <ToggleSwitch Header="Auto‑Start Auto Calibration"
-                    IsOn="{x:Bind _manager.AutoStartCalibration, Mode=TwoWay}"
-                    Margin="0 10 0 0"
-                    IsEnabled="{x:Bind _manager.IsAutoMode, Mode=OneWay}" />
+                <ToggleSwitch   Header="Auto‑Start Auto Calibration"
+                                IsOn="{x:Bind _manager.AutoStartCalibration, Mode=TwoWay}"
+                                Margin="0 10 0 0"
+                                IsEnabled="{x:Bind _manager.AutoStartCalibration, Mode=OneWay}" />
                 
-                <ToggleSwitch
-                    Header="Calibration Mode"
-                    OnContent="Auto"
-                    OffContent="Manual"
-                    IsOn="{x:Bind _manager.IsAutoMode, Mode=TwoWay}"
-                    Toggled="OnCalibrationModeToggled"
-                    Margin="0 20 0 0"/>                
+                <ToggleSwitch   Header="Calibration Mode"
+                                OnContent="Auto"
+                                OffContent="Manual"
+                                IsOn="{x:Bind _manager.IsAutoMode, Mode=TwoWay}"
+                                Toggled="OnCalibrationModeToggled"
+                                Margin="0 20 0 0"/>                
                 
                 <!-- Touch Zone Section -->
                 <Grid Margin="0 20 0 0">
@@ -127,23 +128,24 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Touch Zone"
-                       Style="{ThemeResource SubtitleTextBlockStyle}"
-                       VerticalAlignment="Center" />
+                               Style="{ThemeResource SubtitleTextBlockStyle}"
+                               VerticalAlignment="Center" />
                     <TextBlock Text="{x:Bind _manager.TouchZoneStatus, Mode=OneWay}"
-                       Foreground="{x:Bind _manager.TouchZoneForeground, Mode=OneWay}"
-                       VerticalAlignment="Center"
-                       Grid.Column="1"/>
+                               Foreground="{x:Bind _manager.TouchZoneForeground, Mode=OneWay}"
+                               VerticalAlignment="Center"
+                               Grid.Column="1"/>
                 </Grid>
 
                 <TextBlock Text="Select 4 points to define a rectangle area for interactions."
-                   Style="{ThemeResource CaptionTextBlockStyle}"
-                   Margin="0 0 0 0" />
+                           Style="{ThemeResource CaptionTextBlockStyle}"
+                           Margin="0 0 0 0" />
 
+                <!-- Start button to define Touch Zone manually -->
                 <Button Content="Define"
-                Click="OnDefineTouchZoneClicked"
-                HorizontalAlignment="Stretch"
-                IsEnabled="{x:Bind _manager.IsTouchZoneToggleEnabled, Mode=OneWay}"
-                Margin="0 10 0 0" />
+                        Click="OnDefineTouchZoneClicked"
+                        HorizontalAlignment="Stretch"
+                        IsEnabled="{x:Bind _manager.IsTouchZoneToggleEnabled, Mode=OneWay}"
+                        Margin="0 10 0 0" />
                 <!-- End of Touch Zone Section -->
 
                 <!-- Touch Offset Section with Min/Max -->

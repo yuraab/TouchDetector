@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CPRLib", "..\cpr-lib-old\CP
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ob-sharp", "..\ob-sharp\ob-sharp.csproj", "{63B52AE7-07DF-CD84-285D-978BD755D5BC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectorShared", "..\ProjectorShared\ProjectorShared.csproj", "{2EE071BA-9D27-A098-3465-A79D127ADCDD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -43,6 +45,14 @@ Global
 		{63B52AE7-07DF-CD84-285D-978BD755D5BC}.Release|x64.Build.0 = Release|AnyCPU
 		{63B52AE7-07DF-CD84-285D-978BD755D5BC}.Release|x86.ActiveCfg = Release|Any CPU
 		{63B52AE7-07DF-CD84-285D-978BD755D5BC}.Release|x86.Build.0 = Release|Any CPU
+		{2EE071BA-9D27-A098-3465-A79D127ADCDD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2EE071BA-9D27-A098-3465-A79D127ADCDD}.Debug|x64.Build.0 = Debug|Any CPU
+		{2EE071BA-9D27-A098-3465-A79D127ADCDD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2EE071BA-9D27-A098-3465-A79D127ADCDD}.Debug|x86.Build.0 = Debug|Any CPU
+		{2EE071BA-9D27-A098-3465-A79D127ADCDD}.Release|x64.ActiveCfg = Release|Any CPU
+		{2EE071BA-9D27-A098-3465-A79D127ADCDD}.Release|x64.Build.0 = Release|Any CPU
+		{2EE071BA-9D27-A098-3465-A79D127ADCDD}.Release|x86.ActiveCfg = Release|Any CPU
+		{2EE071BA-9D27-A098-3465-A79D127ADCDD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
