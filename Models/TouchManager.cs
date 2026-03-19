@@ -27,7 +27,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using OB = OBSharp.Sensor;
-//using AutoCalibrator = ProjectorHomography;
+
 
 namespace CPRTouchVision.Models
 {
@@ -423,7 +423,7 @@ namespace CPRTouchVision.Models
         {
             CheckIsReadyRunTouchLoop();
 #if DEBUG
-            App.Log($"Track Touch Loop ready to start = {IsReadyTrackTouch}");
+            App.Log($"Track Touch Loop ready to start = {IsReadyTrackTouch} because  IsWallPlaneSet = {IsWallPlaneSet} && IsTouchZoneSet = {IsTouchZoneSet} && MaxOffset > MinOffset = {MaxOffset > MinOffset} && !IsFittingPlane = {!IsFittingPlane}");
 #endif
             if (IsRunningTrackTouch || !IsReadyTrackTouch) return;
 
@@ -1234,6 +1234,13 @@ namespace CPRTouchVision.Models
             
             var fitter = new RANSACPlaneFitter(iterations: 1000, threshold: 10);
             PlaneResult plane = await Task.Run(() => fitter.FitPlane(points));
+            if (!plane.Success)
+            { 
+                App.Log("Plane fitting failed. Not enough inliers or points.");
+                IsTouchZoneDefining = false;
+                Changed?.Invoke(this, TouchManagerEventType.CalibrationFailed);
+                return;
+            }
             _planeNormal = plane.Normal;
             _planeD = plane.D;
 
@@ -1266,6 +1273,7 @@ namespace CPRTouchVision.Models
 
             //await SaveConfig(); 
             IsTouchZoneDefining = false;
+            IsWallPlaneSet = true;
             IsTouchZoneSet = true;
         }
 
@@ -1640,7 +1648,8 @@ namespace CPRTouchVision.Models
     public enum TouchManagerEventType
     {
         NewFrame,
-        CalibrationUpdate
+        CalibrationUpdate,
+        CalibrationFailed
     }
 
     public class ConfigMissingException : Exception

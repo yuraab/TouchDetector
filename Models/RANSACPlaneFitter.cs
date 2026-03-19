@@ -20,11 +20,13 @@ namespace CPRTouchVision.Models
 
         public PlaneResult FitPlane(List<Vector3> points)
         {
+            //return PlaneResult.Fail("Not enough valid 3D points to fit a plane.");
+
             if (points.Count < 3)
-                throw new ArgumentException("Need at least 3 points to fit a plane.");
+                return PlaneResult.Fail("Not enough valid 3D points to fit a plane.");
 
             Random rand = new Random();
-            PlaneResult best = null;
+            PlaneResult? best = null;
 
             for (int i = 0; i < _iterations; i++)
             {
@@ -54,9 +56,14 @@ namespace CPRTouchVision.Models
                 }
             }
 
+            if (best == null)
+                return PlaneResult.Fail("Failed to find a valid plane.");
+
             Canonicalize(ref best);
-            return best;
+            
+            return PlaneResult.Ok(best);
         }
+
         private void Canonicalize(ref PlaneResult plane)
         {
             // Example: enforce Nz < 0
@@ -97,10 +104,36 @@ namespace CPRTouchVision.Models
 
     public class PlaneResult
     {
+        public bool Success { get; set; }
+        public string Error { get; set; } = "";
+
         public Vector3 Normal { get; set; }
         public float D { get; set; }
         public List<Vector3> Outliers { get; set; } = new();
         public int InliersCount { get; set; }
+
+        public static PlaneResult Fail(string error) =>
+            new PlaneResult { Success = false, Error = error };
+
+        public static PlaneResult Ok(Vector3 normal, float d, int inliers, List<Vector3> outliers) =>
+            new PlaneResult
+            {
+                Success = true,
+                Normal = normal,
+                D = d,
+                InliersCount = inliers,
+                Outliers = outliers
+            };
+
+        public static PlaneResult Ok(PlaneResult result) =>
+            new PlaneResult
+            {
+                Success = true,
+                Normal = result.Normal,
+                D = result.D,
+                InliersCount = result.InliersCount,
+                Outliers = result.Outliers
+            };
 
         public float DistanceTo(Vector3 p)
         {

@@ -32,141 +32,6 @@ namespace CPRTouchVision.Models
         void Hide();
     }
 
-    public class ProjectorService : IProjectorDisplay 
-    { 
-        private ProjectionWindow? _window; 
-        public void ShowImage(string path) 
-        {
-            Debug.WriteLine("Dispatcher: " + DispatcherQueue.GetForCurrentThread());
-            // 1. Close the old window safely
-            if (_window != null)
-            {
-                var old = _window;
-                _window = null;
-
-                //App.Main.DispatcherQueue.TryEnqueue(() =>
-                DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
-                {
-                    old.Close();
-                });
-            }
-
-            // 2. Create the new window in a separate tick
-            //App.Main.DispatcherQueue.TryEnqueue(() =>
-            DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
-            {
-                _window = new ProjectionWindow();
-                _window.AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
-                _window.Activate();
-            });
-
-            // 3. Apply MoveAndResize and SetImage AFTER activation
-            //App.Main.DispatcherQueue.TryEnqueue(() =>
-            DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
-            {
-                if (_window is null)
-                    return;
-
-                // Get projector display
-                var displays = DisplayArea.FindAll();
-                DisplayArea projector = null;
-
-                for (int i = 0; i < displays.Count; i++)
-                {
-                    var d = displays[i];
-                    Debug.WriteLine($"Display: {d.DisplayId} Primary={d.IsPrimary} {d.WorkArea.Width}x{d.WorkArea.Height}");
-                    Debug.WriteLine($"{d.OuterBounds.X}:{d.OuterBounds.Y}  {d.OuterBounds.Width}x{d.OuterBounds.Height}");
-                    if (!d.IsPrimary)
-                    {
-                        projector = d;
-                        break;
-                    }
-                }
-
-                if (projector is null)
-                    return;
-
-                // Move and resize the window to the projector
-                /*
-                _window.AppWindow.MoveAndResize(
-                    new RectInt32(
-                        projector.OuterBounds.X,
-                        projector.OuterBounds.Y,
-                        projector.OuterBounds.Width,
-                        projector.OuterBounds.Height
-                    )
-                );
-                
-                _window.AppWindow.MoveAndResize(
-                    new RectInt32(
-                        projector.WorkArea.X,
-                        projector.WorkArea.Y,
-                        projector.WorkArea.Width,
-                        projector.WorkArea.Height
-                    )
-                );
-                */
-                //_window.AppWindow.MoveAndResize(projector.WorkArea);
-            });
-
-            // 4. Set image AFTER window is positioned
-            //App.Main.DispatcherQueue.TryEnqueue(() =>
-            DispatcherQueue.GetForCurrentThread().TryEnqueue(() =>
-            {
-                //_window?.SetImage(path);
-            });
-        }
-
-        public void ShowMat(Mat marker)
-        {
-            App.Main.DispatcherQueue.TryEnqueue(() =>
-            {
-                var displays = DisplayArea.FindAll();
-                DisplayArea projector = null;
-
-                for (int i = 0; i < displays.Count; i++)
-                {
-                    var d = displays[i];
-                    if (!d.IsPrimary)
-                    {
-                        projector = d;
-                        break;
-                    }
-                }
-
-
-                if (projector == null) return;
-
-                _window?.Close();
-
-                _window = new ProjectionWindow();
-                _window.Activate();
-
-                _window.AppWindow.MoveAndResize(
-                    new RectInt32(
-                        projector.WorkArea.X,
-                        projector.WorkArea.Y,
-                        projector.WorkArea.Width,
-                        projector.WorkArea.Height));
-
-                _window.AppWindow.SetPresenter(
-                    AppWindowPresenterKind.FullScreen);
-
-
-                _window.SetMat(marker);
-
-                //Mat test = new Mat(600, 800, MatType.CV_8UC3, new Scalar(0, 0, 255)); // red
-                //_window.SetMat(test);
-            });
-        }
-
-        public void Hide() 
-        { 
-            _window?.Close(); 
-            _window = null; 
-        } 
-    }
-
     public interface ICalibrationProgress
     {
         void OnStatus(string message); 
@@ -265,11 +130,8 @@ namespace CPRTouchVision.Models
         private readonly TouchManager _touchManager;
         private readonly CalibrationManager _calibrator = new CalibrationManager();
 
-        public AutoCalibrationService(
-            //IProjectorDisplay projector, 
-            TouchManager manager)
+        public AutoCalibrationService(TouchManager manager)
         {
-            //_projector = projector;
             _touchManager = manager;
             _progress = manager; // It implements the interface, so this works!
         }
@@ -573,7 +435,7 @@ namespace CPRTouchVision.Models
             return result;
         }
 
-        public OpenCvSharp.Point[] DetectProjectionCountour(Mat frame)
+        public Point[] DetectProjectionCountour(Mat frame)
         {
 
             Mat gray = new Mat();
@@ -588,7 +450,7 @@ namespace CPRTouchVision.Models
             Mat kernel = Cv2.GetStructuringElement(MorphShapes.Rect, new OpenCvSharp.Size(5, 5));
             Cv2.MorphologyEx(thresh, thresh, MorphTypes.Open, kernel);
 
-            OpenCvSharp.Point[][] contours;
+            Point[][] contours;
             HierarchyIndex[] hierarchy;
 
             Cv2.FindContours(
@@ -621,11 +483,11 @@ namespace CPRTouchVision.Models
             if (largest == null) return null;
 
             // FIX: Generate the outer convex boundary to ignore the "muted" icon notch
-            OpenCvSharp.Point[] hull = Cv2.ConvexHull(largest);
+            Point[] hull = Cv2.ConvexHull(largest);
 
             // Approximate the hull instead of the raw contour
             double epsilon = 0.02 * Cv2.ArcLength(hull, true);
-            OpenCvSharp.Point[] approx = Cv2.ApproxPolyDP(hull, epsilon, true);
+            Point[] approx = Cv2.ApproxPolyDP(hull, epsilon, true);
 
             if (approx.Length != 4) return null;
 

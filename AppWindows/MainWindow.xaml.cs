@@ -195,6 +195,22 @@ namespace CPRTouchVision
                 case TouchManagerEventType.NewFrame:
                     Canvas?.Invalidate();
                     break;
+                case TouchManagerEventType.CalibrationFailed:
+                    if (_manager.IsAutoMode)
+                    {
+                        // In auto-mode, if calibration fails, we can attempt to re-run detection
+                        DispatcherQueue.TryEnqueue(async () =>
+                        {
+                            await _autoCalibrator.RunDetectionAsync();
+                        });
+                    }
+                    else
+                    {
+                        // In manual mode, we might want to show an error or allow the user to retry
+                        // For now, we'll just invalidate the canvas to show the last state
+                        Canvas?.Invalidate();
+                    }
+                    break;
                 default:
                     break;
             }
