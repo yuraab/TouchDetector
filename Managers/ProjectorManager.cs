@@ -1,4 +1,4 @@
-﻿using ProjectorShared;
+﻿using CPRProjectorShared;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

@@ -74,8 +74,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\cpr-lib-old\CPRLib.csproj" />
-    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />
-	<ProjectReference Include="..\ProjectorShared\ProjectorShared.csproj" />  
+    <ProjectReference Include="..\cpr-projector-shared\CPRProjectorShared.csproj" />
+    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />  
   </ItemGroup>
   <ItemGroup>
 
@@ -90,8 +90,8 @@
   </ItemGroup>
 	
 	<ItemGroup>
-		<None Include="..\Projector\bin\$(Configuration)\net9.0-windows\**\*.*">
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		<None Include="..\cpr-projector\bin\$(Configuration)\net9.0-windows\**\*.*" Exclude="**\System.Management.dll;**\System.CodeDom.dll">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     	</None>
 	</ItemGroup>
 	

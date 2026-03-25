@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Media;
 using OpenCvSharp;
 using OpenCvSharp.Aruco;
 using OpenCvSharp.Extensions;
-using ProjectorShared;
+using CPRProjectorShared;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
