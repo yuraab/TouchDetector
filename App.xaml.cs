@@ -1,7 +1,5 @@
-﻿//using HardwareDetection;
-using CPRLib;
-using CPRTouchVision.Models;
-using CPRTouchVision.AppWindows;
+﻿using CPRTouchVision.Models;
+//using CPRTouchVision.AppWindows;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
@@ -38,6 +36,13 @@ namespace CPRTouchVision
 
         new static public App Current => (App)Application.Current;
 
+        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        {
+            m_window = new MainWindow();
+            m_window.Activate();
+        }
+
+        private Microsoft.UI.Xaml.Window? m_window;
 
         public App()
         {
@@ -103,97 +108,10 @@ namespace CPRTouchVision
                 }
             };
             */
+            Log("Before InitializeComponent");
             InitializeComponent();
+            Log("After InitializeComponent");
         }
-
-        /// <summary>
-        /// Invoked when the application is launched.
-        /// </summary>
-        /// <param name="args">Details about the launch request and process.</param>
-        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
-        {
-            string? startCommand = null;
-
-            if (AppInstance.GetActivatedEventArgs() is IActivatedEventArgs activatedArgs)
-            {
-                if (activatedArgs.Kind == ActivationKind.Protocol && activatedArgs is ProtocolActivatedEventArgs protocolArgs)
-                {
-                    StartMinimized = true;
-                    startCommand = protocolArgs.Uri.Host;
-
-                    switch (startCommand)
-                    {
-                        case "start":
-                            AutoTrack = true;
-                            break;
-                        default:
-                            break;
-                    }
-                }
-            }
-
-            if (!IsFirstInstance())
-            {
-                ForwardStartCommand(startCommand);
-                return;
-            }
-
-            var init = new InitWindow();
-            init.CenterOnScreen();
-
-            if (StartMinimized)
-                init.ActivateMinimized();
-            else
-                init.Activate();           
-        }
-
-       
-
-        public void Setup()
-        {
-            Main = new MainWindow();
-            Main.CenterOnScreen();
-            Main.SetIcon("Assets/favicon.ico");
-
-            if (StartMinimized)
-                Main.ActivateMinimized();
-            else
-                Main.Activate();
-        }
-
-        private bool IsFirstInstance()
-        {
-            return Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName).Length == 1;
-        }
-
-        private async void ForwardStartCommand(string? startCommand)
-        {
-            if (startCommand != null)
-            {
-                var client = new PipeClient(PipeName.TouchVision);
-                await client.Connect();
-                await client.SendMessage(startCommand);
-            }
-
-            Environment.Exit(0);
-        }
-
-        private async Task<bool> RedirectToMainInstance()
-        {
-            var main = AppInstance.FindOrRegisterInstanceForKey("cpr-touch-vision");
-            
-            
-
-            return false;
-        }
-
-        private void LogUnhandled(string source, Exception? ex)
-        {
-            string msg = $"[{source}] Unhandled Exception:\n{ex?.Message}\n{ex?.StackTrace}";
-            Console.WriteLine(msg);
-            File.AppendAllText("unhandled.log", msg + Environment.NewLine);
-        }
-
 
         [DllImport("kernel32.dll")]
         private static extern bool AllocConsole();

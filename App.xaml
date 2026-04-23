@@ -7,9 +7,6 @@
     <Application.Resources>
         <ResourceDictionary>
 
-            <!-- Converters -->
-            <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-            
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
 
@@ -51,6 +48,10 @@
                     </ResourceDictionary.ThemeDictionaries>
                 </ResourceDictionary>
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Converters -->
+            <conv:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+            
         </ResourceDictionary>
     </Application.Resources>
 </Application>

@@ -1,7 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ComputeSharp;
-using CPRLib;
+//using CPRLib;
 using Emgu.CV;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -254,7 +254,7 @@ namespace CPRTouchVision.Models
 
         private System.Numerics.Quaternion _cameraRotation = System.Numerics.Quaternion.Identity;
         private DepthVisualizer _depthVisualizer;
-        private PipeServer _server = new PipeServer(PipeName.TouchVision);
+        //private PipeServer _server = new PipeServer(PipeName.TouchVision);
         public readonly object Lock = new object();
 
         // Rendering
@@ -324,8 +324,8 @@ namespace CPRTouchVision.Models
             MinOffset = _defaltMinOffset;
             GameScreenWidth = _defaultGameScreenWidth;
             GameScreenHeight = _defaultGameScreenHeight;
-            _server.Start();
-            _server.MessageReceived += OnMessageReceived;
+            //_server.Start();
+            //_server.MessageReceived += OnMessageReceived;
             IsCameraPositionDefined = false;
         }
 

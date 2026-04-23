@@ -1,9 +1,6 @@
 {
   "profiles": {
-    "cpr-touch-vision (Package)": {
-      "commandName": "MsixPackage"
-    },
-    "cpr-touch-vision (Unpackaged)": {
+    "CPRTouchVision (Unpackaged)": {
       "commandName": "Project"
     }
   }
