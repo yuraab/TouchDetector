@@ -1,141 +1,230 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
-	  
-    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <RootNamespace>CPRTouchVision</RootNamespace>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-	  
-    <UseWinUI>true</UseWinUI>
-	  
-    <EnableMsixTooling>true</EnableMsixTooling>
-    <Platforms>x64</Platforms>
-    <PlatformTarget>x64</PlatformTarget>
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
-    <Nullable>enable</Nullable>
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
-    <!-- Use the real file path -->
-    <ApplicationIcon>Assets\favicon.ico</ApplicationIcon>
 
-	<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
-  </PropertyGroup>
-	
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>none</DebugType>
-  </PropertyGroup>
+	<!-- ========================= -->
+	<!--   COMMON PROPERTIES       -->
+	<!-- ========================= -->
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+		<TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+		<RootNamespace>CPRTouchVision</RootNamespace>
+		<UseWinUI>true</UseWinUI>
+		<Platforms>x64</Platforms>
+		<PlatformTarget>x64</PlatformTarget>
+		<Nullable>enable</Nullable>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<ApplicationIcon>Assets\favicon.ico</ApplicationIcon>
+		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
+		<WindowsSdkPackageVersion>10.0.19041.38</WindowsSdkPackageVersion>
+		<SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+		<Configurations>Debug;Release;Test</Configurations>
+		<SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+		<PublishReadyToRun>False</PublishReadyToRun>
+		<PublishTrimmed>False</PublishTrimmed>
+	</PropertyGroup>
 
-  <!-- This forces MSBuild to stop using the 26100 SDK and instead use the SDK that matches your TargetFramework (19041 -->
-  <PropertyGroup>
-	  <WindowsSdkPackageVersion>10.0.19041.38</WindowsSdkPackageVersion>
-  </PropertyGroup>
-	
-  <!-- Ensure ALL assets are actually Content (Include, not Update) -->
-  <ItemGroup>
-    <Content Include="Assets\favicon.ico" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Assets\imgs\**\*.*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Assets\svg\**\*.*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="Assets\SplashScreen.scale-200.png" />
-    <Content Include="Assets\LockScreenLogo.scale-200.png" />
-    <Content Include="Assets\Square150x150Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
-    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <Manifest Include="$(ApplicationManifest)" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <ProjectCapability Include="Msix" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="ComputeSharp" Version="3.2.0" />
-    <PackageReference Include="DBSCAN.RBush" Version="3.0.0" />
-    <PackageReference Include="DBSCAN" Version="3.0.0" />
-    <PackageReference Include="Emgu.CV" Version="4.11.0.5746" />
-    <PackageReference Include="Emgu.CV.runtime.windows" Version="4.11.0.5746" />
-    <PackageReference Include="Microsoft.PowerShell.SDK" Version="7.5.2" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260302" />
-    <PackageReference Include="OpenCvSharp4.Extensions" Version="4.13.0.20260302" />
-    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260302" />
-    <PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.0" />
-    <PackageReference Include="System.Management" Version="9.0.7" />
-    <PackageReference Include="Vizcon.OSC" Version="1.0.3" />
-	  
-	<PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.240829000" />
-	<PackageReference Include="WinUIEx" Version="2.5.0" />
-    <!-- REMOVE this:
-         <PackageReference Include="System.Private.Uri" Version="4.3.2" />
-    -->
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\cpr-lib-old\CPRLib.csproj" />
-    <ProjectReference Include="..\cpr-projector-shared\CPRProjectorShared.csproj" />
-    <ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />  
-  </ItemGroup>
-  <ItemGroup>
+	<!-- ========================= -->
+	<!--   PACKAGED (Debug/Release) -->
+	<!-- ========================= -->
+	<PropertyGroup Condition="'$(Configuration)'!='Test'">
+		<EnableMsixTooling>true</EnableMsixTooling>
+		<WindowsPackageType>MSIX</WindowsPackageType>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<AppxSymbolPackageEnabled>False</AppxSymbolPackageEnabled>
+		<PackageCertificateThumbprint>526B61533B2E1881D0EB9F7219DDF29C7D05F3B8</PackageCertificateThumbprint>
+		<AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
+		<AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
+		<AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
+		<GenerateAppInstallerFile>True</GenerateAppInstallerFile>
+		<AppInstallerUri>https://cpr.software/downloads/cpr-touch-vision</AppInstallerUri>
+		<HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
+		<GenerateTestArtifacts>True</GenerateTestArtifacts>
+		<AppxBundle>Never</AppxBundle>
+		<HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+	</PropertyGroup>
 
-    <Reference Include="SharpOSC">
-      <HintPath>..\..\..\..\..\dev\SharpOSC.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
-    <Page Update="AppWindows\InitWindow.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-  </ItemGroup>
-	
+	<!-- ========================= -->
+	<!--   UNPACKAGED (Test)        -->
+	<!-- ========================= -->
+	<PropertyGroup Condition="'$(Configuration)'=='Test'">
+		<EnableMsixTooling>false</EnableMsixTooling>
+		<WindowsPackageType>None</WindowsPackageType>
+		<AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+		<UseMrtCore>false</UseMrtCore>
+		<UsePackageManifest>false</UsePackageManifest>
+		<GeneratePriEnabled>false</GeneratePriEnabled>
+		<WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+		<DisableWinUIAppXamlGeneratedMain>true</DisableWinUIAppXamlGeneratedMain>
+		<DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+		<StartupObject>Startup</StartupObject>
+		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+		<SelfContained>false</SelfContained>
+		<PublishSingleFile>false</PublishSingleFile>
+		<ApplicationManifest></ApplicationManifest>
+	</PropertyGroup>
+
+	<!-- ========================= -->
+	<!--   RELEASE SYMBOLS         -->
+	<!-- ========================= -->
+	<PropertyGroup Condition="'$(Configuration)'=='Release'">
+		<DebugSymbols>false</DebugSymbols>
+		<DebugType>none</DebugType>
+	</PropertyGroup>
+
+	<!-- ========================= -->
+	<!--   ASSETS                  -->
+	<!-- ========================= -->
 	<ItemGroup>
-		<None Include="..\cpr-projector\bin\$(Configuration)\net9.0-windows\**\*.*" Exclude="**\System.Management.dll;**\System.CodeDom.dll">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    	</None>
+		<Content Include="Assets\favicon.ico" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\imgs\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\svg\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="Assets\SplashScreen.scale-200.png" />
+		<Content Include="Assets\LockScreenLogo.scale-200.png" />
+		<Content Include="Assets\Square150x150Logo.scale-200.png" />
+		<Content Include="Assets\Square44x44Logo.scale-200.png" />
+		<Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+		<Content Include="Assets\Wide310x150Logo.scale-200.png" />
+	</ItemGroup>
+
+	<!-- Manifest only for packaged -->
+	<ItemGroup Condition="'$(Configuration)'!='Test'">
+		<Manifest Include="$(ApplicationManifest)" />
+	</ItemGroup>
+
+	<!-- MSIX capability only for packaged -->
+	<ItemGroup Condition="'$(Configuration)'!='Test' and '$(DisableMsixProjectCapabilityAddedByProject)'!='true'">
+		<ProjectCapability Include="Msix" />
+	</ItemGroup>
+
+	<!-- Packaged only files -->
+	<ItemGroup Condition="'$(Configuration)'!='Test'">
+		<Page Include="AppWindows\InitWindow.xaml">
+			<Generator>MSBuild:Compile</Generator>
+		</Page>
+		<Compile Include="AppWindows\InitWindow.xaml.cs">
+			<DependentUpon>InitWindow.xaml</DependentUpon>
+		</Compile>
+		<Manifest Include="app.manifest" />
+		<AppxManifest Include="Package.appxmanifest" />
+	</ItemGroup>
+
+	<!-- Exclude from Test explicitly -->
+	<ItemGroup Condition="'$(Configuration)'=='Test'">
+		<Compile Remove="AppWindows\InitWindow.xaml.cs" />
+		<Page Remove="AppWindows\InitWindow.xaml" />
 	</ItemGroup>
 	
-  <!-- Fix native copy target: use the items you declared, and copy to output -->
+	<!-- ========================= -->
+	<!--   NATIVE DLLS (Test only) -->
+	<!-- ========================= -->
+	<ItemGroup Condition="'$(Configuration)'=='Test'">
+		<Content Include="C:\ProgramData\CPR Soft\bin\*.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="C:\ProgramData\CPR Soft\bin\*.onnx">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<!-- Native DLLs for packaged -->
+	<ItemGroup Condition="'$(Configuration)'!='Test'">
+		<Content Include="C:\ProgramData\CPR Soft\bin\*.dll">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<PackagePath>runtimes\win-x64\native</PackagePath>
+		</Content>
+		<Content Include="C:\ProgramData\CPR Soft\bin\*.onnx">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<PackagePath>runtimes\win-x64\native</PackagePath>
+		</Content>
+	</ItemGroup>
+
+	<!-- ========================= -->
+	<!--   NUGET PACKAGES          -->
+	<!-- ========================= -->
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+		<PackageReference Include="ComputeSharp" Version="3.2.0" />
+		<PackageReference Include="DBSCAN.RBush" Version="3.0.0" />
+		<PackageReference Include="DBSCAN" Version="3.0.0" />
+		<PackageReference Include="Emgu.CV" Version="4.11.0.5746" />
+		<PackageReference Include="Emgu.CV.runtime.windows" Version="4.11.0.5746" />
+		<PackageReference Include="Microsoft.PowerShell.SDK" Version="7.5.2" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="OpenCvSharp4" Version="4.13.0.20260302" />
+		<PackageReference Include="OpenCvSharp4.Extensions" Version="4.13.0.20260302" />
+		<PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260302" />
+		<PackageReference Include="SkiaSharp.Views.WinUI" Version="3.119.0" />
+		<PackageReference Include="System.Management" Version="9.0.7" />
+		<PackageReference Include="Vizcon.OSC" Version="1.0.3" />
+		<PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.240829000" />
+		<PackageReference Include="WinUIEx" Version="2.5.0" />
+		<PackageReference Include="System.Collections.Immutable" Version="8.0.0" />
+	</ItemGroup>
+
+	<!-- ========================= -->
+	<!--   PROJECT REFERENCES      -->
+	<!-- ========================= -->
+	<!-- Only for packaged builds -->
+	<ItemGroup Condition="'$(Configuration)'!='Test'">
+		<ProjectReference Include="..\cpr-lib-old\CPRLib.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\cpr-projector-shared\CPRProjectorShared.csproj" />
+		<ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />
+	</ItemGroup>
+
+	<!-- Ensure cpr-projector is built before copy -->
+	<ItemGroup>
+		<ProjectReference Include="..\cpr-projector\CPRProjector.csproj">
+			<ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+			<SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
+		</ProjectReference>
+	</ItemGroup>
+
+	<!-- ========================= -->
+	<!--   SHARPOSC                -->
+	<!-- ========================= -->
+	<ItemGroup>
+		<Reference Include="SharpOSC">
+			<HintPath>..\..\..\..\..\dev\SharpOSC.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
+	<!-- ========================= -->
+	<!--   COPY PROJECTOR OUTPUT   -->
+	<!-- ========================= -->
+	<ItemGroup>
+		<None Include="..\cpr-projector\bin\x64\$(Configuration)\net9.0-windows\**\*.*"
+			  Exclude="**\System.Management.dll;**\System.CodeDom.dll">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
+	<!-- ========================= -->
+	<!--   CHECK PROJECTOR EXISTS  -->
+	<!-- ========================= -->
+	<Target Name="CheckProjectorExists" BeforeTargets="Build">
+		<Error
+		  Condition="!Exists('..\cpr-projector\bin\x64\$(Configuration)\net9.0-windows\CPRProjectorApp.exe')"
+		  Text="CPRProjectorApp.exe not found. Please build cpr-projector first." />
+	</Target>
+
+	<!-- ========================= -->
+	<!--   COPY NATIVE DEPS        -->
+	<!-- ========================= -->
 	<Target Name="CopyNativeDependencies" AfterTargets="Build">
-    <ItemGroup>
-      <NativeDlls Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.dll" />
-      <OnnxFiles Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.onnx" />
-    </ItemGroup>
-    <Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(OnnxFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-  </Target>
-  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
-    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
-  </PropertyGroup>
-  <PropertyGroup>
-    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
-    <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">False</PublishReadyToRun>
-    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">False</PublishTrimmed>
-    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
-    <PackageCertificateThumbprint>526B61533B2E1881D0EB9F7219DDF29C7D05F3B8</PackageCertificateThumbprint>
-    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
-    <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
-    <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
-    <AppxAutoIncrementPackageRevision>True</AppxAutoIncrementPackageRevision>
-    <GenerateTestArtifacts>True</GenerateTestArtifacts>
-    <AppxBundle>Never</AppxBundle>
-    <AppInstallerUri>https://cpr.software/downloads/cpr-touch-vision</AppInstallerUri>
-    <HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
-    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
-  </PropertyGroup>
-  <Import Project="cpr-touch-vision.dotnet_reactor.targets" Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
-  <!-- Include native DLLs from CPR Soft global folder into MSIX package -->
-  <ItemGroup>
-	  <!-- All native DLLs -->
-	  <Content Include="C:\ProgramData\CPR Soft\bin\*.dll">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		  <PackagePath>runtimes\win-x64\native</PackagePath>
-	  </Content>
-	  <!-- ONNX models -->
-	  <Content Include="C:\ProgramData\CPR Soft\bin\*.onnx">
-		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		  <PackagePath>runtimes\win-x64\native</PackagePath>
-	  </Content>
-  </ItemGroup>
+		<ItemGroup>
+			<NativeDlls Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.dll" />
+			<OnnxFiles Include="..\ob-sharp\bin\$(Configuration)\netstandard2.1\*.onnx" />
+		</ItemGroup>
+		<Copy SourceFiles="@(NativeDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+		<Copy SourceFiles="@(OnnxFiles)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+	</Target>
+
+	<!-- Dotnet Reactor (optional) -->
+	<Import Project="cpr-touch-vision.dotnet_reactor.targets"
+			Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
+
 </Project>

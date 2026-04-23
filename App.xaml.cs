@@ -1,7 +1,8 @@
-﻿//using HardwareDetection;
+﻿#if !DISABLE_XAML_GENERATED_MAIN
 using CPRLib;
-using CPRTouchVision.Models;
 using CPRTouchVision.AppWindows;
+#endif
+using CPRTouchVision.Models;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
@@ -112,6 +113,7 @@ namespace CPRTouchVision
         /// <param name="args">Details about the launch request and process.</param>
         protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+#if !DISABLE_XAML_GENERATED_MAIN
             string? startCommand = null;
 
             if (AppInstance.GetActivatedEventArgs() is IActivatedEventArgs activatedArgs)
@@ -144,7 +146,9 @@ namespace CPRTouchVision
             if (StartMinimized)
                 init.ActivateMinimized();
             else
-                init.Activate();           
+                init.Activate();     
+#else
+#endif           
         }
 
        
