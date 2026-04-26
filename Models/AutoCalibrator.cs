@@ -1,8 +1,11 @@
-﻿using CPRTouchVision.AppWindows;
-using CPRTouchVision.Projector;
-using Microsoft.UI.Dispatching;
-using Microsoft.UI.Windowing;
-using Microsoft.UI.Xaml.Media;
+﻿
+#if !DISABLE_XAML_GENERATED_MAIN
+using CPRTouchVision.AppWindows;
+#endif
+//using CPRTouchVision.Projector;
+//using Microsoft.UI.Dispatching;
+//using Microsoft.UI.Windowing;
+//using Microsoft.UI.Xaml.Media;
 using OpenCvSharp;
 using OpenCvSharp.Aruco;
 using OpenCvSharp.Extensions;
@@ -14,12 +17,12 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
+//using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Windows.Graphics;
+//using Windows.Graphics;
 using Point = OpenCvSharp.Point;
 using ProjectorManager = CPRTouchVision.Projector.ProjectorManager;
 
@@ -140,6 +143,7 @@ namespace CPRTouchVision.Models
         {
             try
             {
+                App.Log("Starting auto calibration...");
                 _progress.OnStatus("Starting auto calibration..."); 
                 _progress.OnProgress(0.05);
 
@@ -169,10 +173,11 @@ namespace CPRTouchVision.Models
 
                 // Wait for 
                 await _projector.WaitForAsync(Events.ImageDisplayed, token);
-                Debug.WriteLine($"Projector confirms the image is displayed");
+                App.Log($"Projector confirms the image is displayed");
 
 
                 // 2. Capture + detect 
+                App.Log("Waiting for camera frame...");
                 _progress.OnStatus("Waiting for camera frame...");
                 _progress.OnProgress(0.3);
  
@@ -184,19 +189,24 @@ namespace CPRTouchVision.Models
                 {
                     _progress.OnFailed("Failed to detect touch zone");
                     return;
-                } 
+                }
 
+                App.Log("Fitting plane and finalizing...");
                 _progress.OnStatus("Fitting plane and finalizing..."); 
                 _progress.OnProgress(0.8); 
 
                 _progress.OnCompleted(points); 
-                _progress.OnProgress(1.0); 
+                _progress.OnProgress(1.0);
+
+                App.Log("Fitting plane and finalizing...");
                 _progress.OnStatus("Auto calibration completed"); 
             } catch (OperationCanceledException) 
             {
+                App.Log("Auto calibration canceled");
                 _progress.OnFailed("Auto calibration canceled"); 
             } catch (Exception ex) 
             { 
+                App.Log($"Auto calibration error: {ex.Message}");
                 _progress.OnFailed($"Auto calibration error: {ex.Message}"); 
             } 
         } 

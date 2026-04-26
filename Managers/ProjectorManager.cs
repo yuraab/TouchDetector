@@ -29,7 +29,7 @@ namespace CPRTouchVision.Projector
             if (_process != null && !_process.HasExited)
                 return Task.CompletedTask;
 
-            Debug.WriteLine($"Starting projector helper from '{_exePath}'");
+            App.Log($"Starting projector helper from '{_exePath}'");
 
             _process = new Process
             {
@@ -70,7 +70,7 @@ namespace CPRTouchVision.Projector
 
             await _writer.WriteLineAsync(Events.Ack_Ready);
 
-            Debug.WriteLine($"Sent 'ACK_READY' to projector");
+            App.Log($"Sent 'ACK_READY' to projector");
         }
 
         public async void StopProjector()

@@ -1,6 +1,7 @@
+#if !DISABLE_XAML_GENERATED_MAIN
 using CPRTouchVision.AppWindows;
+#endif
 using CPRTouchVision.Models;
-using Emgu.CV.Mcc;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -10,7 +11,6 @@ using SkiaSharp.Views.Windows;
 using System;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading.Tasks;
 using Windows.System;
 using WinUIEx;
 
@@ -118,14 +118,14 @@ namespace CPRTouchVision
                 _manager.AutoStartCalibration &&
                 _manager.CanStartCalibration)
             {
-                Debug.WriteLine("Auto-conditions met. Starting calibration...");
+                App.Log("Auto-conditions met. Starting calibration...");
                 await _autoCalibrator.RunDetectionAsync();
             }
         }
 
         private async void OnMainWindowLoaded(object sender, RoutedEventArgs e)
         {
-            Debug.WriteLine("=== OnMainWindowLoaded Started ==="); // Check if this prints
+            App.Log("=== OnMainWindowLoaded Started ==="); // Check if this prints
             try
             {
                 /*
@@ -157,7 +157,7 @@ namespace CPRTouchVision
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error during hardware initialization: {ex}");
+                App.Log($"Error during hardware initialization: {ex}");
                 // Optionally show a message to the user here
             }
             

@@ -22,8 +22,12 @@
 		<SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
 		<PublishReadyToRun>False</PublishReadyToRun>
 		<PublishTrimmed>False</PublishTrimmed>
-	</PropertyGroup>
 
+		<DisableWinUIAppXamlGeneratedMain>false</DisableWinUIAppXamlGeneratedMain>
+		
+	</PropertyGroup>
+		
+	
 	<!-- ========================= -->
 	<!--   PACKAGED (Debug/Release) -->
 	<!-- ========================= -->
@@ -48,6 +52,9 @@
 	<!--   UNPACKAGED (Test)        -->
 	<!-- ========================= -->
 	<PropertyGroup Condition="'$(Configuration)'=='Test'">
+		<DisableWinUIAppXamlGeneratedMain>true</DisableWinUIAppXamlGeneratedMain>
+		<DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+		<StartupObject>CPRTouchVision.Startup</StartupObject>
 		<EnableMsixTooling>false</EnableMsixTooling>
 		<WindowsPackageType>None</WindowsPackageType>
 		<AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
@@ -55,14 +62,11 @@
 		<UsePackageManifest>false</UsePackageManifest>
 		<GeneratePriEnabled>false</GeneratePriEnabled>
 		<WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
-		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 		<DisableWinUIAppXamlGeneratedMain>true</DisableWinUIAppXamlGeneratedMain>
-		<DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-		<StartupObject>Startup</StartupObject>
+		<!-- <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained> -->
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SelfContained>false</SelfContained>
 		<PublishSingleFile>false</PublishSingleFile>
-		<ApplicationManifest></ApplicationManifest>
 	</PropertyGroup>
 
 	<!-- ========================= -->
@@ -88,9 +92,12 @@
 		<Content Include="Assets\Wide310x150Logo.scale-200.png" />
 	</ItemGroup>
 
-	<!-- Manifest only for packaged -->
+	<!-- ========================= -->
+	<!--   PACKAGED ONLY FILES     -->
+	<!-- ========================= -->
 	<ItemGroup Condition="'$(Configuration)'!='Test'">
-		<Manifest Include="$(ApplicationManifest)" />
+		<Manifest Include="app.manifest" />
+		<AppxManifest Include="Package.appxmanifest" />
 	</ItemGroup>
 
 	<!-- MSIX capability only for packaged -->
@@ -98,27 +105,24 @@
 		<ProjectCapability Include="Msix" />
 	</ItemGroup>
 
-	<!-- Packaged only files -->
-	<ItemGroup Condition="'$(Configuration)'!='Test'">
-		<Page Include="AppWindows\InitWindow.xaml">
-			<Generator>MSBuild:Compile</Generator>
-		</Page>
-		<Compile Include="AppWindows\InitWindow.xaml.cs">
-			<DependentUpon>InitWindow.xaml</DependentUpon>
-		</Compile>
-		<Manifest Include="app.manifest" />
-		<AppxManifest Include="Package.appxmanifest" />
+	<!-- ========================= -->
+	<!--   TEST ONLY EXCLUSIONS    -->
+	<!-- ========================= -->
+	<ItemGroup>
+		<Compile Remove="AppWindows\InitWindow.xaml.cs" Condition="'$(Configuration)'=='Test'" />
+		<Page Remove="AppWindows\InitWindow.xaml" Condition="'$(Configuration)'=='Test'" />
+		
 	</ItemGroup>
 
-	<!-- Exclude from Test explicitly -->
 	<ItemGroup Condition="'$(Configuration)'=='Test'">
-		<Compile Remove="AppWindows\InitWindow.xaml.cs" />
-		<Page Remove="AppWindows\InitWindow.xaml" />
+		<None Include="$(NuGetPackageRoot)microsoft.windowsappsdk\1.6.240829000\tools\**\*.*"
+			  CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 	
 	<!-- ========================= -->
-	<!--   NATIVE DLLS (Test only) -->
+	<!--   NATIVE DLLS             -->
 	<!-- ========================= -->
+	<!-- Test: copy flat to output -->
 	<ItemGroup Condition="'$(Configuration)'=='Test'">
 		<Content Include="C:\ProgramData\CPR Soft\bin\*.dll">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -128,7 +132,7 @@
 		</Content>
 	</ItemGroup>
 
-	<!-- Native DLLs for packaged -->
+	<!-- Packaged: copy with PackagePath -->
 	<ItemGroup Condition="'$(Configuration)'!='Test'">
 		<Content Include="C:\ProgramData\CPR Soft\bin\*.dll">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -166,21 +170,13 @@
 	<!-- ========================= -->
 	<!--   PROJECT REFERENCES      -->
 	<!-- ========================= -->
-	<!-- Only for packaged builds -->
 	<ItemGroup Condition="'$(Configuration)'!='Test'">
 		<ProjectReference Include="..\cpr-lib-old\CPRLib.csproj" />
 	</ItemGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\cpr-projector-shared\CPRProjectorShared.csproj" />
 		<ProjectReference Include="..\ob-sharp\ob-sharp.csproj" />
-	</ItemGroup>
-
-	<!-- Ensure cpr-projector is built before copy -->
-	<ItemGroup>
-		<ProjectReference Include="..\cpr-projector\CPRProjector.csproj">
-			<ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-			<SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
-		</ProjectReference>
 	</ItemGroup>
 
 	<!-- ========================= -->
@@ -196,20 +192,11 @@
 	<!--   COPY PROJECTOR OUTPUT   -->
 	<!-- ========================= -->
 	<ItemGroup>
-		<None Include="..\cpr-projector\bin\x64\$(Configuration)\net9.0-windows\**\*.*"
+		<None Include="..\cpr-projector\bin\x64\Release\net9.0-windows\**\*.*"
 			  Exclude="**\System.Management.dll;**\System.CodeDom.dll">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
-
-	<!-- ========================= -->
-	<!--   CHECK PROJECTOR EXISTS  -->
-	<!-- ========================= -->
-	<Target Name="CheckProjectorExists" BeforeTargets="Build">
-		<Error
-		  Condition="!Exists('..\cpr-projector\bin\x64\$(Configuration)\net9.0-windows\CPRProjectorApp.exe')"
-		  Text="CPRProjectorApp.exe not found. Please build cpr-projector first." />
-	</Target>
 
 	<!-- ========================= -->
 	<!--   COPY NATIVE DEPS        -->

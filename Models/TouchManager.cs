@@ -1,7 +1,9 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ComputeSharp;
+#if !DISABLE_XAML_GENERATED_MAIN
 using CPRLib;
+#endif
 using Emgu.CV;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -254,7 +256,11 @@ namespace CPRTouchVision.Models
 
         private System.Numerics.Quaternion _cameraRotation = System.Numerics.Quaternion.Identity;
         private DepthVisualizer _depthVisualizer;
+
+#if !DISABLE_XAML_GENERATED_MAIN
         private PipeServer _server = new PipeServer(PipeName.TouchVision);
+#endif
+
         public readonly object Lock = new object();
 
         // Rendering
@@ -296,7 +302,7 @@ namespace CPRTouchVision.Models
         private UdpClient _client = new();
         private bool _isConfigGotten = false;
 
-#if DEBUG
+#if DEBUG || DISABLE_XAML_GENERATED_MAIN
         private bool _isSingleOutputDone;
         
 #endif
@@ -324,27 +330,15 @@ namespace CPRTouchVision.Models
             MinOffset = _defaltMinOffset;
             GameScreenWidth = _defaultGameScreenWidth;
             GameScreenHeight = _defaultGameScreenHeight;
+#if !DISABLE_XAML_GENERATED_MAIN
             _server.Start();
             _server.MessageReceived += OnMessageReceived;
+#endif
             IsCameraPositionDefined = false;
         }
 
         public void RegisterHardware(IHardwareChecker checker) 
         {
-            /*
-            _checkers.Add(checker); 
-            _hardwareStates[checker.DeviceName] = StatusCode.Pending;
-
-            HardwareItems = _hardwareStates
-                .Select(kvp => new HardwareStatusItem { Name = kvp.Key, Status = kvp.Value })
-                .ToList();
-
-            checker.OnStatusChanged += status => 
-            { 
-                _hardwareStates[checker.DeviceName] = status; 
-                UpdateHardwareSummary(); 
-            }; 
-            */
             // 1. Store the logic object so CheckConnection() can be called in the loop
             _checkers.Add(checker);
 
@@ -403,7 +397,7 @@ namespace CPRTouchVision.Models
         }
         private void Start()
         {
-            if (IsRunning || !OBSharp.Sensor.Device.TryOpen(out var device)) return;
+            if (IsRunning || !Device.TryOpen(out var device)) return;
 
             _captureLoop = new(device);
             _captureLoop.CaptureReady += OnCaptureReady;

@@ -3,10 +3,12 @@ using CPRLib;
 using CPRTouchVision.AppWindows;
 #endif
 using CPRTouchVision.Models;
+using Emgu.CV.Structure;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using OBSharp;
+using OpenCvSharp;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -42,9 +44,13 @@ namespace CPRTouchVision
 
         public App()
         {
-
+            this.UnhandledException += (s, e) =>
+            {
+                Log("Unhandled: " + e.Exception.ToString());
+                e.Handled = true;
+            };
             //ObSharpLogger.LogAction = Log;
-#if DEBUG
+#if DEBUG || DISABLE_XAML_GENERATED_MAIN
             AttachConsole(); // Optional debug console
 #endif
             string? userHome = Environment.GetEnvironmentVariable("HOME");
@@ -52,8 +58,6 @@ namespace CPRTouchVision
             {
                 userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile); // default fallback
             }
-
-            //File.WriteAllText(LogFilePath, $"[LOG START] {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n");
 
             /// <summary>
             /// Initializes the singleton application object.  This is the first line of authored code
@@ -104,16 +108,46 @@ namespace CPRTouchVision
                 }
             };
             */
-            InitializeComponent();
+            try
+            {
+                Log("Before InitializeComponent");
+                InitializeComponent();
+                Log("After InitializeComponent");
+            }
+            catch (Exception ex)
+            {
+                Log("InitializeComponent error: " + ex.ToString());
+                File.AppendAllText("startup-errors.log", ex.ToString() + Environment.NewLine);
+            }
         }
 
-        /// <summary>
-        /// Invoked when the application is launched.
-        /// </summary>
-        /// <param name="args">Details about the launch request and process.</param>
+#if DISABLE_XAML_GENERATED_MAIN
+        private Microsoft.UI.Xaml.Window? m_window;
+
         protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            try
+            {
+                Log("OnLaunched started");
+                m_window = new MainWindow();
+                m_window.CenterOnScreen();
+                m_window.SetIcon("Assets/favicon.ico");
+                m_window.Activate();
+                Log("OnLaunched completed");
+            }
+            catch (Exception ex)
+            {
+                Log("OnLaunched error: " + ex.Message);
+                File.AppendAllText("startup-errors.log", ex.ToString() + Environment.NewLine);
+            }
+        }
+#endif
+
 #if !DISABLE_XAML_GENERATED_MAIN
+        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        {
+
+
             string? startCommand = null;
 
             if (AppInstance.GetActivatedEventArgs() is IActivatedEventArgs activatedArgs)
@@ -147,11 +181,8 @@ namespace CPRTouchVision
                 init.ActivateMinimized();
             else
                 init.Activate();     
-#else
-#endif           
+          
         }
-
-       
 
         public void Setup()
         {
@@ -190,7 +221,7 @@ namespace CPRTouchVision
 
             return false;
         }
-
+#endif
         private void LogUnhandled(string source, Exception? ex)
         {
             string msg = $"[{source}] Unhandled Exception:\n{ex?.Message}\n{ex?.StackTrace}";
@@ -234,7 +265,7 @@ namespace CPRTouchVision
             [CallerLineNumber] int line = 0
             )
         {
-#if DEBUG
+#if DEBUG || DISABLE_XAML_GENERATED_MAIN
             try
             {
                 // Get stack trace to find parent method
