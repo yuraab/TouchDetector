@@ -60,6 +60,9 @@ namespace CPRTouchVision.Models
         string _infoMessage = "";
 
         [ObservableProperty]
+        bool _isError = false;
+
+        [ObservableProperty]
         bool _isWallPlaneSet = false;
 
         [ObservableProperty]
@@ -203,11 +206,13 @@ namespace CPRTouchVision.Models
 
                 _touchZonePoints.Add(projectedPoint);
             }
+
             await FinalizeTouchZoneAsync(); 
         } 
         public void OnFailed(string reason) 
         { 
-            CalibrationStatus = $"Failed: {reason}"; 
+            CalibrationStatus = $"{Constants.FailureIndicatorMessage}: {reason}";
+            _isError = true;
         }
 
 
@@ -445,7 +450,7 @@ namespace CPRTouchVision.Models
             IsRunningTrackTouch = true;
             _isReadyReceiveNewCapture = true;
             _detectableSpace.WallNotAligned += OnWallNotAligned;
-            InfoMessage = "Touch loop is running";
+            InfoMessage = "Touch detection is running";
         }
 
         private void OnWallNotAligned()

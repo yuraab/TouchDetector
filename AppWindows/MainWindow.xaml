@@ -200,9 +200,46 @@
                                      PointerPressed="OnCanvasPointerPressed"/>
                     </Viewbox>
                 </Border>
-                <TextBlock Text="{x:Bind _manager.CursorLabel, Mode=TwoWay}" 
+                
+                <!-- Info message (cursor coordinates/state etc)  -->
+                <Grid>
+                    <VisualStateManager.VisualStateGroups>
+                        <VisualStateGroup x:Name="ErrorStates">
+
+                            <!-- Normal state -->
+                            <VisualState x:Name="Normal">
+                                <VisualState.Setters>
+                                    <Setter Target="InfoTextBlock.Foreground" Value="Gray"/>
+                                    <Setter Target="InfoTextBlock.Opacity" Value="0"/>
+                                </VisualState.Setters>
+                            </VisualState>
+
+                            <!-- Error state -->
+                            <VisualState x:Name="Error">
+                                <VisualState.Setters>
+                                    <Setter Target="InfoTextBlock.Foreground" Value="Red"/>
+                                    <Setter Target="InfoTextBlock.Opacity" Value="1"/>
+                                </VisualState.Setters>
+                            </VisualState>
+
+                        </VisualStateGroup>
+                    </VisualStateManager.VisualStateGroups>
+
+                    <TextBlock x:Name="InfoTextBlock"
+                       Text="{x:Bind _manager.InfoMessage}"
                        FontSize="10"
-                       Style="{ThemeResource CaptionTextBlockStyle}" />
+                       Opacity="0"
+                       Style="{ThemeResource CaptionTextBlockStyle}">
+        
+                        <!-- Smooth fade animation -->
+                            <TextBlock.Transitions>
+                                <Transitions>
+                                    <DoubleTransition Property="Opacity" Duration="0:0:0.3"/>
+                                </Transitions>
+                            </TextBlock.Transitions>
+
+                    </TextBlock>
+                </Grid>
             </StackPanel>
         </Grid>
     </Grid>
