@@ -57,7 +57,7 @@ namespace CPRTouchVision.Models
         SKPoint _cursor = SKPoint.Empty;
 
         [ObservableProperty]
-        string _cursorLabel = "";
+        string _infoMessage = "";
 
         [ObservableProperty]
         bool _isWallPlaneSet = false;
@@ -176,7 +176,13 @@ namespace CPRTouchVision.Models
 
         public void OnStatus(string message) 
         { 
-            CalibrationStatus = message; 
+            CalibrationStatus = message;
+        }
+
+        public void OnCalibrationStatusChanged(string message)
+        {
+            InfoMessage = message;
+
         }
         public void OnProgress(double percent) 
         { 
@@ -439,6 +445,7 @@ namespace CPRTouchVision.Models
             IsRunningTrackTouch = true;
             _isReadyReceiveNewCapture = true;
             _detectableSpace.WallNotAligned += OnWallNotAligned;
+            InfoMessage = "Touch loop is running";
         }
 
         private void OnWallNotAligned()
@@ -1449,11 +1456,11 @@ namespace CPRTouchVision.Models
             {
                 var p = _calibration.Convert2DTo3D(new(value.X, value.Y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth)?.ToVector3();
                 p = p / 1000.0f;
-                CursorLabel = $"({value.X};{value.Y}) - ({p.Value.X}; {p.Value.Y}; {p.Value.Z})m;";
+                InfoMessage = $"({value.X};{value.Y}) - ({p.Value.X}; {p.Value.Y}; {p.Value.Z})m;";
             }
             else
             {
-                CursorLabel = $"({value.X};{value.Y})";
+                InfoMessage = $"({value.X};{value.Y})";
             }
 
         }
