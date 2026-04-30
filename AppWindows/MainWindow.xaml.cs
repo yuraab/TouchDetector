@@ -6,9 +6,11 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using Windows.System;
@@ -61,6 +63,10 @@ namespace CPRTouchVision
 
             // Manager event hookup
             _manager.Changed += OnManagerChanged;
+
+            // Listen for property changes to update info/error messages
+            _manager.PropertyChanged += OnManagerPropertyChanged;
+
             // Subscribe to the completion event
             _manager.HardwareChecksCompleted += OnHardwareChecksCompleted;
 
@@ -119,6 +125,7 @@ namespace CPRTouchVision
                 _manager.CanStartCalibration)
             {
                 App.Log("Auto-conditions met. Starting calibration...");
+                _manager.InfoMessage = "Auto-conditions met. Starting calibration...";
                 await _autoCalibrator.RunDetectionAsync();
             }
         }
@@ -214,6 +221,30 @@ namespace CPRTouchVision
                 default:
                     break;
             }
+        }
+
+        private void OnManagerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(_manager.InfoMessage) ||
+                e.PropertyName == nameof(_manager.IsError))
+            {
+                DispatcherQueue.TryEnqueue(() => UpdateInfoState());
+            }
+        }
+
+        private void UpdateInfoState()
+        {
+            if (string.IsNullOrEmpty(_manager.InfoMessage))
+            {
+                FadeOutStoryboard.Begin();
+                return;
+            }
+
+            InfoTextBlock.Foreground = _manager.IsError
+                ? new SolidColorBrush(Microsoft.UI.Colors.Red)
+                : new SolidColorBrush(Microsoft.UI.Colors.Gray);
+
+            FadeInStoryboard.Begin();
         }
 
         private void OnCanvasPaintSurface(object? sender, SKPaintSurfaceEventArgs e)

@@ -28,6 +28,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using WinUIEx.Messaging;
 using OB = OBSharp.Sensor;
 
 
@@ -124,7 +125,6 @@ namespace CPRTouchVision.Models
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(IsHardwareReady))]
-        [NotifyPropertyChangedFor(nameof(CanStartCalibration))]
         [NotifyPropertyChangedFor(nameof(HardwareErrorMessage))]
         private bool _allHardwareConnected;
 
@@ -142,6 +142,17 @@ namespace CPRTouchVision.Models
 
         [ObservableProperty]
         private bool _isDeviceChecking;
+
+        // This controls the AutoStart button IsEnabled
+        [ObservableProperty]
+        private bool _canStartCalibration;
+
+        public bool CanStartAutoCalibration => IsAutoMode && CanStartCalibration;
+
+        partial void OnCanStartCalibrationChanged(bool value)
+        {
+            OnPropertyChanged(nameof(CanStartCalibration));
+        }
 
         public event EventHandler HardwareChecksCompleted;
 
@@ -180,12 +191,13 @@ namespace CPRTouchVision.Models
         public void OnStatus(string message) 
         { 
             CalibrationStatus = message;
+            App.Log(message);
         }
 
-        public void OnCalibrationStatusChanged(string message)
+        partial void OnCalibrationStatusChanged(string value)
         {
-            InfoMessage = message;
-
+            InfoMessage = value;
+            App.Log(value);
         }
         public void OnProgress(double percent) 
         { 
@@ -222,8 +234,7 @@ namespace CPRTouchVision.Models
 
         public IReadOnlyList<IHardwareChecker> Checkers => _checkers;
 
-        // This controls the AutoStart button IsEnabled
-        public bool CanStartAutoCalibration => IsAutoMode && IsHardwareReady && !AutoStartCalibration;
+        
 
         // This controls the Start button IsEnabled
         public bool CanStartCalibration => AllHardwareConnected;
@@ -369,7 +380,7 @@ namespace CPRTouchVision.Models
                 UIDispatcherQueue?.TryEnqueue(() =>
                 {
                     newItem.Status = status;
-#if DEBUG
+#if DEBUG || TEST
                     Debug.WriteLine($"newItem.Status = {newItem.Status}");
                     Debug.WriteLine($"status = {status}");
 #endif
@@ -401,6 +412,7 @@ namespace CPRTouchVision.Models
 
         public void StartStopCapture()
         {
+            //App.Log($"CanStartAutoCalibration = {CanStartAutoCalibration}; IsAutoMode = {IsAutoMode}; CanStartCalibration = {CanStartCalibration}");
             if (IsRunning)
                 Stop();
             else
@@ -450,7 +462,8 @@ namespace CPRTouchVision.Models
             IsRunningTrackTouch = true;
             _isReadyReceiveNewCapture = true;
             _detectableSpace.WallNotAligned += OnWallNotAligned;
-            InfoMessage = "Touch detection is running";
+            App.Log("Touch detection is started");
+            OnStatus("Touch detection is running");
         }
 
         private void OnWallNotAligned()
@@ -737,7 +750,10 @@ namespace CPRTouchVision.Models
             _depthBitmap = new(_colorBitmapInfo);
 
             IsRunning = false;
-            
+            App.Log($"CanStartAutoCalibration = {CanStartAutoCalibration}");
+            Debug.WriteLine("Capture stopped");
+            Debug.WriteLine("CanStartAutoCalibration = " + CanStartAutoCalibration);
+
         }
 
         public void StartCalibration()

@@ -49,6 +49,7 @@ namespace CPRTouchVision.Models
             }
         }
 
+        public static string FailureIndicatorMessage => "Failure";
     }
 
     public class Utilities

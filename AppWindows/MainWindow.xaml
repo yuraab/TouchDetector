@@ -202,7 +202,7 @@
                 </Border>
                 
                 <!-- Info message (cursor coordinates/state etc)  -->
-                <Grid>
+                <Grid x:Name="InfoGrid">
                     <VisualStateManager.VisualStateGroups>
                         <VisualStateGroup x:Name="ErrorStates">
 
@@ -226,18 +226,24 @@
                     </VisualStateManager.VisualStateGroups>
 
                     <TextBlock x:Name="InfoTextBlock"
-                       Text="{x:Bind _manager.InfoMessage}"
-                       FontSize="10"
-                       Opacity="0"
-                       Style="{ThemeResource CaptionTextBlockStyle}">
-        
-                        <!-- Smooth fade animation -->
-                            <TextBlock.Transitions>
-                                <Transitions>
-                                    <DoubleTransition Property="Opacity" Duration="0:0:0.3"/>
-                                </Transitions>
-                            </TextBlock.Transitions>
-
+                           Text="{x:Bind _manager.InfoMessage, Mode=OneWay}"
+                           FontSize="10"
+                           Opacity="0"
+                           Style="{ThemeResource CaptionTextBlockStyle}">
+                        <TextBlock.Resources>
+                            <Storyboard x:Name="FadeInStoryboard">
+                                <DoubleAnimation Storyboard.TargetName="InfoTextBlock"
+                             Storyboard.TargetProperty="Opacity"
+                             From="0" To="1"
+                             Duration="0:0:0.3"/>
+                            </Storyboard>
+                            <Storyboard x:Name="FadeOutStoryboard">
+                                <DoubleAnimation Storyboard.TargetName="InfoTextBlock"
+                             Storyboard.TargetProperty="Opacity"
+                             From="1" To="0"
+                             Duration="0:0:0.3"/>
+                            </Storyboard>
+                        </TextBlock.Resources>
                     </TextBlock>
                 </Grid>
             </StackPanel>
