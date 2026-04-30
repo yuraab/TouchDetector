@@ -40,6 +40,7 @@ namespace CPRTouchVision.Models
         string _toglleStartStop = "Start";
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(CanStartAutoCalibration))]
         bool _isAutoMode = true;
 
         [ObservableProperty]
@@ -124,8 +125,13 @@ namespace CPRTouchVision.Models
         private bool isHardwareReady;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(CanStartCalibration))]
+        private bool _isCameraConnected;
+
+        [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(IsHardwareReady))]
         [NotifyPropertyChangedFor(nameof(HardwareErrorMessage))]
+        [NotifyPropertyChangedFor(nameof(CanStartAutoCalibration))]
         private bool _allHardwareConnected;
 
         [ObservableProperty] 
@@ -143,16 +149,9 @@ namespace CPRTouchVision.Models
         [ObservableProperty]
         private bool _isDeviceChecking;
 
-        // This controls the AutoStart button IsEnabled
-        [ObservableProperty]
-        private bool _canStartCalibration;
+        public bool CanStartCalibration => IsCameraConnected;
 
-        public bool CanStartAutoCalibration => IsAutoMode && CanStartCalibration;
-
-        partial void OnCanStartCalibrationChanged(bool value)
-        {
-            OnPropertyChanged(nameof(CanStartCalibration));
-        }
+        public bool CanStartAutoCalibration => IsAutoMode && AllHardwareConnected && !IsDeviceChecking;
 
         public event EventHandler HardwareChecksCompleted;
 
@@ -162,6 +161,8 @@ namespace CPRTouchVision.Models
         {
             IsDeviceChecking = true;
 
+            InfoMessage = "Checking hardware connections...";
+
             // Reset all statuses to Pending before starting
             foreach (var item in HardwareItems) item.Status = StatusCode.Pending;
 
@@ -170,6 +171,9 @@ namespace CPRTouchVision.Models
             await Task.WhenAll(tasks);
 
             IsDeviceChecking = false;
+
+            InfoMessage = "Hardware check completed.";
+
             UpdateHardwareReadiness();
 
             // Notify MainWindow listening 
@@ -234,13 +238,12 @@ namespace CPRTouchVision.Models
 
         public IReadOnlyList<IHardwareChecker> Checkers => _checkers;
 
-        
-
-        // This controls the Start button IsEnabled
-        public bool CanStartCalibration => AllHardwareConnected;
 
         private void UpdateHardwareReadiness()
         {
+            IsCameraConnected = HardwareItems.Any(x =>
+                x.Name == "Camera" && x.Status == StatusCode.Connected);
+
             // Check if every item in the list has a 'Connected' status
             AllHardwareConnected = HardwareItems.Count > 0 &&
                                    HardwareItems.All(x => x.Status == StatusCode.Connected);

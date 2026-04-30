@@ -107,7 +107,8 @@
                 <Button Content="{x:Bind _manager.ToglleStartStop, Mode=OneWay}"
                         Click="OnStartStopClicked"
                         HorizontalAlignment="Stretch" 
-                        Margin="0 10 0 0"    />
+                        Margin="0 10 0 0"    
+                        IsEnabled="{x:Bind _manager.CanStartCalibration, Mode=OneWay}" />
 
                 <ToggleSwitch   Header="Auto‑Start Auto Calibration"
                                 IsOn="{x:Bind _manager.AutoStartCalibration, Mode=TwoWay}"
