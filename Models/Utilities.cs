@@ -10,6 +10,9 @@ namespace CPRTouchVision.Models
 {
     public static class Constants
     {
+        public const bool InitialIsAutoMode = true;
+        public const bool InitialStartInAutoMode = true;
+
         public const string TopLeft = "TopLeft";
         public const string TopRight = "TopRight";
         public const string BottomRight = "BottomRight";

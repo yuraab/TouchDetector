@@ -1,18 +1,8 @@
-﻿using Microsoft.UI.Xaml.Documents;
-using Microsoft.UI.Xaml.Media;
-using OBSharp;
-using OBSharp.BodyTracking;
-using OBSharp.Sensor;
+﻿using OBSharp.Sensor;
 using System;
-using System.Buffers;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Numerics;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace CPRTouchVision.Models
 {

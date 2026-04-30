@@ -180,8 +180,24 @@ namespace CPRTouchVision.Models
                 App.Log("Waiting for camera frame...");
                 _progress.OnStatus("Waiting for camera frame...");
                 _progress.OnProgress(0.3);
- 
-                var points = await DetectTouchZonePointsAsync(token);
+
+                // Add timeout
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
+
+                Point[]? points = null;
+                try
+                {
+                    points = await DetectTouchZonePointsAsync(linkedCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (timeoutCts.IsCancellationRequested)
+                    {
+                        _progress.OnFailed("Timeout waiting for camera frame. To Retry click 'Start Auto Calibration' button.");
+                        return;
+                    }
+                }
 
                 _projector.StopProjector();
 

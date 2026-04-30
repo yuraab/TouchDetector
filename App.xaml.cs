@@ -265,7 +265,7 @@ namespace CPRTouchVision
             [CallerLineNumber] int line = 0
             )
         {
-#if DEBUG || DISABLE_XAML_GENERATED_MAIN
+#if DEBUG || TEST || DISABLE_XAML_GENERATED_MAIN
             try
             {
                 // Get stack trace to find parent method

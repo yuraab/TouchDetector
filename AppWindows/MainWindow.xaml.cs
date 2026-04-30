@@ -122,7 +122,7 @@ namespace CPRTouchVision
             // This runs after BOTH manual retries and the initial startup check
             if (_manager.IsAutoMode &&
                 _manager.AutoStartCalibration &&
-                _manager.CanStartCalibration)
+                _manager.CanStartAutoCalibration)
             {
                 App.Log("Auto-conditions met. Starting calibration...");
                 _manager.InfoMessage = "Auto-conditions met. Starting calibration...";
@@ -402,12 +402,15 @@ namespace CPRTouchVision
                 var s = ((UIElement)sender).XamlRoot.RasterizationScale;
                 var x = (int)(point.Position.X * s / _cw * _manager.FW);
                 var y = (int)(point.Position.Y * s / _ch * _manager.FH);
- 
-                Debug.WriteLine($"Selected point with x={x}, y={y}. FW={_manager.FW}, FH={_manager.FH}");
 
-                if (_manager.IsSelectingTouchZone && !_manager.AutoStartCalibration)
+                var message = $"Selected point with x={x}, y={y}. FW={_manager.FW}, FH={_manager.FH}";
+                App.Log(message);
+
+                if (_manager.IsSelectingTouchZone)
                 {
                     _manager.AddTouchZonePoint(x, y);
+
+                    App.Log($"Selected point is added");
                 }
 
             }

@@ -41,10 +41,10 @@ namespace CPRTouchVision.Models
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(CanStartAutoCalibration))]
-        bool _isAutoMode = true;
+        bool _isAutoMode = Constants.InitialIsAutoMode;
 
         [ObservableProperty]
-        bool _startInAutoMode = true;
+        bool _startInAutoMode = Constants.InitialStartInAutoMode;
 
         [ObservableProperty]
         bool _isRunning = false;
@@ -124,14 +124,13 @@ namespace CPRTouchVision.Models
         [ObservableProperty] 
         private bool isHardwareReady;
 
+        public bool CanStartCalibration => IsCameraConnected;
+
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(CanStartCalibration))]
         private bool _isCameraConnected;
 
         [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(IsHardwareReady))]
-        [NotifyPropertyChangedFor(nameof(HardwareErrorMessage))]
-        [NotifyPropertyChangedFor(nameof(CanStartAutoCalibration))]
         private bool _allHardwareConnected;
 
         [ObservableProperty] 
@@ -147,9 +146,8 @@ namespace CPRTouchVision.Models
         private double calibrationProgress;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(CanStartAutoCalibration))]
         private bool _isDeviceChecking;
-
-        public bool CanStartCalibration => IsCameraConnected;
 
         public bool CanStartAutoCalibration => IsAutoMode && AllHardwareConnected && !IsDeviceChecking;
 
@@ -201,8 +199,35 @@ namespace CPRTouchVision.Models
         partial void OnCalibrationStatusChanged(string value)
         {
             InfoMessage = value;
+            //App.Log(value);
+        }
+
+        partial void OnInfoMessageChanged(string value)
+        {
+            if (value.StartsWith("(")) return; // not log coordinates
             App.Log(value);
         }
+
+        partial void OnAllHardwareConnectedChanged(bool value)
+        {
+            OnPropertyChanged(nameof(IsHardwareReady));
+            OnPropertyChanged(nameof(HardwareErrorMessage));
+
+            if (!value)
+            {
+                AutoStartCalibration = false;
+                IsAutoMode = false;
+            }
+            else
+            {
+                IsAutoMode = Constants.InitialIsAutoMode;
+                AutoStartCalibration = Constants.InitialStartInAutoMode;
+            }
+
+            OnPropertyChanged(nameof(CanStartAutoCalibration));
+        }
+
+
         public void OnProgress(double percent) 
         { 
             CalibrationProgress = percent; 
@@ -417,14 +442,20 @@ namespace CPRTouchVision.Models
         {
             //App.Log($"CanStartAutoCalibration = {CanStartAutoCalibration}; IsAutoMode = {IsAutoMode}; CanStartCalibration = {CanStartCalibration}");
             if (IsRunning)
+            {
                 Stop();
+            }             
             else
+            {
                 Start();
+            }
         }
         private void Start()
         {
+            App.Log("Trying Start Capture");
             if (IsRunning || !Device.TryOpen(out var device)) return;
 
+            App.Log("Start Capture");
             _captureLoop = new(device);
             _captureLoop.CaptureReady += OnCaptureReady;
             _captureLoop.LoopFailed += OnLoopFailed;
@@ -737,8 +768,9 @@ namespace CPRTouchVision.Models
 
         private void Stop()
         {
+            App.Log("trying to Stop Capture");
             if (!IsRunning) return;
-
+            
             if (_captureLoop != null)
             {
                 _captureLoop.CaptureReady -= OnCaptureReady;
@@ -797,6 +829,8 @@ namespace CPRTouchVision.Models
 
         public void StartDefineZone()
         {
+            App.Log("Start Define Touch Zone");
+
             if (IsSelectingTouchZone)
                 { return; }
 
@@ -1467,14 +1501,14 @@ namespace CPRTouchVision.Models
             // Enable the touch zone toggle only when the app is running, the wall plane is defined,
             // we are not currently selecting the touch zone, and we are not fitting a plane.
             //IsTouchZoneToggleEnabled = IsCalibrationToggleEnabled && IsWallPlaneSet && !IsSelectingTouchZone;
-            IsTouchZoneToggleEnabled = value; // !IsSelectingTouchZone && !IsTouchZoneDefining;
+            IsTouchZoneToggleEnabled = IsRunning && !IsCalibrating && !IsFittingPlane; // !IsSelectingTouchZone && !IsTouchZoneDefining;
             CheckIsReadyRunTouchLoop();
         }
 
         partial void OnCursorChanged(SKPoint value)
         {
-            if (!IsRunning)
-                return;
+            if (!IsRunning || IsRunningTrackTouch)
+                return; // Does not display when no running capture or running touch detection 
             var d = GetDepth(value);
             if (d > 0)
             {
