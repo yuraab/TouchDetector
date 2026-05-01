@@ -203,7 +203,7 @@ namespace CPRTouchVision.Models
 
                 if (points == null || points.Length < 4) 
                 {
-                    _progress.OnFailed("Failed to detect touch zone");
+                    _progress.OnFailed($"Failed to detect touch zone. Detected points => {points}");
                     return;
                 }
 

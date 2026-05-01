@@ -69,10 +69,6 @@ namespace CPRTouchVision.Models
 
             _isRunning = true;
             _thread.Start();
-
-#if DEBUG
-            //App.Log("TouchTracker started.");
-#endif
         }
 
         /// <summary>
@@ -102,20 +98,10 @@ namespace CPRTouchVision.Models
         /// </summary>
         private void ProcessLoop()
         {
-#if DEBUG
-            //App.Log($"TouchTracker processing loop started. IsRunning = {_isRunning}");
-#endif
-
             while (_isRunning)
             {
-#if DEBUG
-                //App.Log("TouchTracker loop tick.");
-#endif
-                //_imageAvailable.WaitOne();
-
                 while (true)
                 {
-
                     (ushort[] image, CalibrationGeometry geometry, DateTime time)? item = null;
 
                     lock (_queueLock)
@@ -191,10 +177,6 @@ namespace CPRTouchVision.Models
             }
         }
 
-        private List<OB.Float3> Extract3DPointsInsideVolume(ushort[] depthImage)
-        {
-            return _volume.Extract3DPointsInsideVolumeFromImage(depthImage);
-        }
         private List<OB.Float2> Extract2DPointsInsideVolume(ushort[] depthImage)
         {
             return _volume.ExtractProjectedPointsInsideVolumeFromImage(depthImage);
@@ -231,11 +213,6 @@ namespace CPRTouchVision.Models
             _isDisposed = true;
 
             Stop();
-
-
-#if DEBUG
-            App.Log("TouchTracker disposed.");
-#endif
         }
     }
 }
