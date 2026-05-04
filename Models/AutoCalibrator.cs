@@ -143,7 +143,6 @@ namespace CPRTouchVision.Models
         {
             try
             {
-                App.Log("Starting auto calibration...");
                 _progress.OnStatus("Starting auto calibration..."); 
                 _progress.OnProgress(0.05);
 
@@ -163,7 +162,6 @@ namespace CPRTouchVision.Models
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"Error for StartProjectorAsync: {ex.Message}");
                     _progress.OnFailed($"Failed to start projector: {ex.Message}");
                     return;
                 }
@@ -177,11 +175,9 @@ namespace CPRTouchVision.Models
 
 
                 // 2. Capture + detect 
-                App.Log("Waiting for camera frame...");
                 _progress.OnStatus("Waiting for camera frame...");
                 _progress.OnProgress(0.3);
 
-                // Add timeout
                 using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
 
@@ -198,9 +194,11 @@ namespace CPRTouchVision.Models
                         return;
                     }
                 }
-
-                _projector.StopProjector();
-
+                finally
+                {
+                    _projector.StopProjector();
+                }
+                
                 if (points == null || points.Length < 4) 
                 {
                     _progress.OnFailed($"Failed to detect touch zone. Detected points => {points}");
@@ -228,6 +226,7 @@ namespace CPRTouchVision.Models
         } 
         private async Task<Point[]?> DetectTouchZonePointsAsync(CancellationToken token)
         {
+            App.Log("Redirect frame request to TouchManager");
             var frame = await _touchManager.GetNextCalibrationFrameAsync(token);
             return _calibrator.GetProjectionZone(frame);
         }

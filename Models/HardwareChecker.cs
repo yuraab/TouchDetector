@@ -87,69 +87,71 @@ namespace CPRTouchVision.Models
     public class ProjectorChecker : IHardwareChecker
     {
         public string DeviceName => "Projector"; 
-        public event Action<StatusCode>? OnStatusChanged; 
+        public event Action<StatusCode>? OnStatusChanged;
         public async Task CheckConnection()
         {
-            Debug.WriteLine("Projector checking"); 
-#if FAST_DEBUG 
-            Debug.WriteLine("Fast Debug mode: Skipping projector checking"); 
-            OnStatusChanged?.Invoke(StatusCode.Connected); 
-            return; 
-#endif 
-            await Task.Run(() => 
-            { 
-            try 
-                { 
-                    // Load projector keywords from INI
-                    var projectorKeywords = LoadProjectorKeywords(); 
-#if DEBUG
-                    Debug.WriteLine("Checking projectors: " + string.Join(", ", projectorKeywords)); 
-#endif 
-                    // Query HDMI connections
-                    string hdmiQuery = 
-                        "SELECT InstanceName FROM WmiMonitorConnectionParams " + 
-                        "WHERE Active = True AND VideoOutputTechnology = 5"; 
-                    using var searcher = new ManagementObjectSearcher(@"root\WMI", hdmiQuery); 
-                    foreach (ManagementObject hdmiDevice in searcher.Get()) 
-                    { 
-                        string instanceName = hdmiDevice["InstanceName"]?.ToString() ?? ""; 
-                        string escapedInstance = instanceName.Replace("\\", "\\\\"); 
-                        // Query monitor ID info
-                        string idQuery = "SELECT * FROM WmiMonitorID"; 
-                        using var idSearcher = new ManagementObjectSearcher(@"root\WMI", idQuery); 
-                        foreach (ManagementObject idObject in idSearcher.Get()) 
-                        { 
-                            string model = DecodeWmiField(idObject["UserFriendlyName"] as ushort[]); 
-                            string manufacturer = DecodeWmiField(idObject["ManufacturerName"] as ushort[]); 
-                            Debug.WriteLine($"Model: {model}; Manufacturer: {manufacturer}"); 
-                            
-                            // Match keywords
-                            if (projectorKeywords.Any(k => 
-                                    model.Contains(k, StringComparison.OrdinalIgnoreCase)) || 
-                                projectorKeywords.Any(k => 
-                                    manufacturer.Contains(k, StringComparison.OrdinalIgnoreCase))) 
-                            {
-#if DEBUG
-                                var projector = projectorKeywords.FirstOrDefault(k =>
-                                    model.Contains(k, StringComparison.OrdinalIgnoreCase));
-                                projector ??=  projectorKeywords.FirstOrDefault(k =>
-                                    manufacturer.Contains(k, StringComparison.OrdinalIgnoreCase));
-                                Debug.WriteLine($"Projector found");
+            App.Log("Projector checking");
+#if FAST_DEBUG
+    Debug.WriteLine("Fast Debug mode: Skipping projector checking");
+    OnStatusChanged?.Invoke(StatusCode.Connected);
+    return;
 #endif
-                                OnStatusChanged?.Invoke(StatusCode.Connected); 
-                                return; 
-                            } 
-                        } 
-                    } // No match found
-                      OnStatusChanged?.Invoke(StatusCode.NotConnected); 
-                } 
-                catch (Exception ex) 
-                { 
-                    Debug.WriteLine("Error checking projectors: " + ex.Message); 
-                    OnStatusChanged?.Invoke(StatusCode.Error); 
-                } 
-            }); 
-        } 
+
+            await Task.Run(() =>
+            {
+                try
+                {
+                    var projectorKeywords = LoadProjectorKeywords();
+                    bool foundMatch = false;
+
+                    // 1. Get ALL active monitor IDs first
+                    // Removing the Technology filter ensures we see DisplayPort, VGA, and USB-C
+                    string idQuery = "SELECT * FROM WmiMonitorID WHERE Active = True";
+
+                    using var idSearcher = new ManagementObjectSearcher(@"root\WMI", idQuery);
+                    var monitorResults = idSearcher.Get();
+
+                    App.Log($"Scanning {monitorResults.Count} active monitors...");
+
+                    foreach (ManagementObject idObject in monitorResults)
+                    {
+                        string model = DecodeWmiField(idObject["UserFriendlyName"] as ushort[]);
+                        string manufacturer = DecodeWmiField(idObject["ManufacturerName"] as ushort[]);
+                        string instanceName = idObject["InstanceName"]?.ToString() ?? "";
+
+                        // LOG EVERYTHING to debug why it might be failing
+                        App.Log($"[Checking Device] Manuf: '{manufacturer}', Model: '{model}', ID: {instanceName}");
+
+                        // 2. Check against keywords
+                        bool isMatch = projectorKeywords.Any(k =>
+                            (model?.Contains(k, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                            (manufacturer?.Contains(k, StringComparison.OrdinalIgnoreCase) ?? false));
+
+                        if (isMatch)
+                        {
+                            App.Log($"🎯 MATCH FOUND: {model} matches a keyword.");
+                            foundMatch = true;
+                            break; // Exit loop since we found our projector
+                        }
+                    }
+
+                    if (foundMatch)
+                    {
+                        OnStatusChanged?.Invoke(StatusCode.Connected);
+                    }
+                    else
+                    {
+                        App.Log("No monitors matched the loaded keywords.");
+                        OnStatusChanged?.Invoke(StatusCode.NotConnected);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    App.Log("Error checking projectors: " + ex.Message);
+                    OnStatusChanged?.Invoke(StatusCode.Error);
+                }
+            });
+        }
         private List<string> LoadProjectorKeywords() 
         { 
             List<string> keywords = new(); 
@@ -162,7 +164,11 @@ namespace CPRTouchVision.Models
             string iniPath = Path.Combine(homeDirectory, "projectors.ini"); 
             if (!File.Exists(iniPath)) 
             { 
-                keywords.Add("Optoma"); 
+                keywords.Add("Optoma");
+                keywords.Add("BenQ");
+                keywords.Add("Panasonic");
+                keywords.Add("Epson");
+                keywords.Add("ViewSonic");
                 return keywords; 
             } 
             return File.ReadAllLines(iniPath)

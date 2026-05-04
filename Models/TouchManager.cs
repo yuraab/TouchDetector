@@ -182,10 +182,17 @@ namespace CPRTouchVision.Models
         // MainWindow will call this when auto-calibration is started,
         // and complete the TaskCompletionSource when the frame is ready
         private TaskCompletionSource<CalibrationFrame>? _calibrationRequest;
+
+        // To give BackgroundLoop access to the _calibrationRequest
+        public TaskCompletionSource<CalibrationFrame>? PendingCalibrationRequest { get; set; }
+
+
         public Task<CalibrationFrame> GetNextCalibrationFrameAsync(System.Threading.CancellationToken token)
         {
-            _calibrationRequest = new TaskCompletionSource<CalibrationFrame>();
-            return _calibrationRequest.Task;
+            App.Log("Redirect frame request to CaptureLoop");
+
+            // Pass the request directly to the loop that handles the hardware
+            return _captureLoop.RequestFrame(token);
         }
 
         private bool CanRetry() => !IsDeviceChecking;
@@ -461,7 +468,7 @@ namespace CPRTouchVision.Models
             _captureLoop.LoopFailed += OnLoopFailed;
             _captureLoop.GetCalibration(out _calibration);
             _captureLoop.CameraPositionReady += OnCameraPositionReady;
-
+            
             _transformation = new Transformation(_calibration);
 
             _captureLoop.Run();
@@ -473,7 +480,7 @@ namespace CPRTouchVision.Models
         private void StartTouchLoop()
         {
             CheckIsReadyRunTouchLoop();
-#if DEBUG
+#if DEBUG || TEST
             App.Log($"Track Touch Loop ready to start = {IsReadyTrackTouch} because  IsWallPlaneSet = {IsWallPlaneSet} && IsTouchZoneSet = {IsTouchZoneSet} && MaxOffset > MinOffset = {MaxOffset > MinOffset} && !IsFittingPlane = {!IsFittingPlane}");
 #endif
             if (IsRunningTrackTouch || !IsReadyTrackTouch) return;
@@ -492,12 +499,17 @@ namespace CPRTouchVision.Models
             _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
             _touchLoop.ReadyForNewImage += OnReadyForNewImage;
             
-            _touchLoop.Run();
+            if  (!_touchLoop._isRunning) 
+            {
+                _touchLoop.Run();
+                OnStatus("Touch detection is running");
+            }
+            else
+                App.Log("Touch loop is already running!!!");
+
             IsRunningTrackTouch = true;
             _isReadyReceiveNewCapture = true;
             _detectableSpace.WallNotAligned += OnWallNotAligned;
-            App.Log("Touch detection is started");
-            OnStatus("Touch detection is running");
         }
 
         private void OnWallNotAligned()
@@ -548,7 +560,7 @@ namespace CPRTouchVision.Models
                     Radius = c.Radius,
                     Timestamp = time
                 });
-#if DEBUG
+#if DEBUG || TEST
                 var t = _touches.Last();
                 string message = $"[id:{t.Id} Local Center:({c.Center}) Screen Center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY}) r:{t.Radius:F2}]";
                 App.Log(message);
@@ -624,7 +636,7 @@ namespace CPRTouchVision.Models
                 {
                     bitmap.InstallPixels(_colorBitmapInfo, colorImage.Buffer);
                 });
-                if (_calibrationRequest != null)
+                if (_calibrationRequest != null && !_calibrationRequest.Task.IsCompleted)
                 {
                     int totalBytes = colorImage.SizeBytes;
 
@@ -642,6 +654,8 @@ namespace CPRTouchVision.Models
                     };
                     _calibrationRequest.TrySetResult(frame);
                     _calibrationRequest = null; // Clear request after fulfilling it
+
+                    App.Log("Calibration frame captured and sent to detector.");
                 }
                     
             }

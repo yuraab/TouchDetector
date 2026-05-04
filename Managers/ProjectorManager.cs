@@ -24,10 +24,10 @@ namespace CPRTouchVision.Projector
             else _exePath = exePath;
         }
 
-        public Task StartAsync()
+        public async Task StartAsync()
         {
             if (_process != null && !_process.HasExited)
-                return Task.CompletedTask;
+                return;
 
             App.Log($"Starting projector helper from '{_exePath}'");
 
@@ -42,7 +42,7 @@ namespace CPRTouchVision.Projector
             };
 
             _process.Start();
-            return Task.CompletedTask;
+            await Task.Delay(1000);
         }
 
         public async Task StartProjectorAsync()

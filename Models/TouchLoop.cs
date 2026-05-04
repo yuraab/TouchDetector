@@ -13,7 +13,7 @@ namespace CPRTouchVision.Models
         //private OBSharp.Sensor.Image? _imageForProcessing;
         //private CalibrationGeometry? _calibrationGeometry;
         private readonly Thread _thread;
-        private bool _isRunning;
+        public bool _isRunning { get; private set; }
         private bool _isDisposed;
         //private readonly object _lock = new();
         private readonly TouchTracker_ _tracker;
@@ -67,7 +67,7 @@ namespace CPRTouchVision.Models
             _tracker.Run();
 
             _thread.Start();
-#if DEBUG
+#if DEBUG || TEST
             App.Log("Loop started");
 #endif
         }
@@ -140,10 +140,7 @@ namespace CPRTouchVision.Models
                 {
                     try
                     {
-
                         _ = _tracker.EnqueueImage((ushort[])data.Value.image, (CalibrationGeometry)data.Value.Geometry!, data.Value.time);
-
-
                     }
                     catch (Exception ex)
                     {

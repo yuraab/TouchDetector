@@ -53,6 +53,8 @@ namespace CPRTouchVision.Models
         }
 
         public static string FailureIndicatorMessage => "Failure";
+
+        public const int CalibrationAttemptsDelay = 2000; // in ms
     }
 
     public class Utilities

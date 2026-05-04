@@ -53,7 +53,7 @@ namespace CPRTouchVision.Models
                 Name = "TouchTrackerLoop"
             };
 
-#if DEBUG
+#if DEBUG || TEST
             App.Log("TouchTracker created.");
 #endif
             _maxQueueSize = maxQueueSize;
@@ -81,7 +81,7 @@ namespace CPRTouchVision.Models
             {
                 if (_imageQueue.Count >= _maxQueueSize)
                 {
-#if DEBUG
+#if DEBUG || TEST
                     App.Log("Tracker queue full, rejecting image.");
 #endif
                     return false;
@@ -145,14 +145,14 @@ namespace CPRTouchVision.Models
 
             //var points = Extract3DPointsInsideVolume(image);
             var points = Extract2DPointsInsideVolume(image);
-#if DEBUG
+#if DEBUG || TEST
             if (points.Count >= _clusterManager.MinPoints)
             {
-                App.Log($"[TouchTracker] Filtered points count: {points.Count}");
+                App.Log($"Filtered points count: {points.Count}");
             }
             else
             {
-                App.Log($"[TouchTracker] Not enough points for clustering. Count: {points.Count}");
+                App.Log($"Not enough points for clustering. Count: {points.Count}");
             }
 #endif
             if (points.Count < _clusterManager.MinPoints)
@@ -167,6 +167,9 @@ namespace CPRTouchVision.Models
                 {
                     clusters = _exclusionManager.FilterClusters(clusters);
                 }
+
+                App.Log($"[TouchTracker] Detected {clusters.Count} clusters after exclusion filtering.");
+
                 foreach (var cluster in clusters)
                 {
                     cluster.NormalizedCenter = _volume.GetHomographyCoordinatesFrom2D(cluster.Center);
@@ -201,7 +204,7 @@ namespace CPRTouchVision.Models
                 }
             }
 
-#if DEBUG
+#if DEBUG || TEST
             App.Log("TouchTracker shutdown complete.");
 #endif
         }

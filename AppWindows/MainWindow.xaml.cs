@@ -13,6 +13,7 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Windows.System;
 using WinUIEx;
 
@@ -36,6 +37,10 @@ namespace CPRTouchVision
         // Keep track of the last width to restore it
         private GridLength _lastSidebarWidth = new GridLength(1, GridUnitType.Star);
         public static Microsoft.UI.Dispatching.DispatcherQueue UI;
+
+        private int _retryCalibrationCount = 0;
+        private const int MaxCalibrationRetries = 3;
+
         public MainWindow()
         {
             ExtendsContentIntoTitleBar = true;
@@ -203,13 +208,26 @@ namespace CPRTouchVision
                     Canvas?.Invalidate();
                     break;
                 case TouchManagerEventType.CalibrationFailed:
+                    App.Log("Calibration failed.");
                     if (_manager.IsAutoMode)
                     {
-                        // In auto-mode, if calibration fails, we can attempt to re-run detection
-                        DispatcherQueue.TryEnqueue(async () =>
+                        if (_retryCalibrationCount < MaxCalibrationRetries)
                         {
-                            await _autoCalibrator.RunDetectionAsync();
-                        });
+                            _retryCalibrationCount++;
+                            App.Log($"Auto-mode: Retrying detection after failure... Attempt {_retryCalibrationCount} of {MaxCalibrationRetries}");
+                            // In auto-mode, if calibration fails, we can attempt to re-run detection
+                            DispatcherQueue.TryEnqueue(async () =>
+                            {
+                                await Task.Delay(Constants.CalibrationAttemptsDelay); //Wait for hardware/projector to reset
+                                await _autoCalibrator.RunDetectionAsync();
+                            });
+                        }
+                        else
+                        {
+                            App.Log("Auto-mode: Max retries reached. Stopping.");
+                            _retryCalibrationCount = 0; // Reset for next manual trigger
+                            _manager.InfoMessage = $"{Constants.FailureIndicatorMessage}: Auto-calibration failed after multiple attempts. Please check your hardware and try again.";
+                        }
                     }
                     else
                     {

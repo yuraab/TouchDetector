@@ -1,8 +1,9 @@
-﻿using System;
+﻿using OBSharp.Sensor;
+using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
-using OBSharp.Sensor;
+using System.Threading.Tasks;
 
 namespace CPRTouchVision.Models
 {
@@ -29,6 +30,23 @@ namespace CPRTouchVision.Models
         public event EventHandler<LoopFailedEventArgs>? LoopFailed;
         public event EventHandler<bool>? CameraPositionReady;
 
+        public TaskCompletionSource<CalibrationFrame>? PendingRequest { get; set; }
+
+        public Task<CalibrationFrame> RequestFrame(CancellationToken token)
+        {
+            App.Log("Create the TCS with the async flag");
+            // Create the TCS with the async flag
+            var tcs = new TaskCompletionSource<CalibrationFrame>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            // If the user cancels the operation, tell the TCS to stop waiting
+            token.Register(() => tcs.TrySetCanceled());
+
+            // Assign it so the BackgroundLoop can see it
+            PendingRequest = tcs;
+
+            return tcs.Task;
+        }
+
 
         public CaptureLoop(Device device, bool shouldGetCameraPosition = false)
         {
@@ -38,13 +56,16 @@ namespace CPRTouchVision.Models
             _config = new DeviceConfiguration()
             {
                 CameraFps = FrameRate.Thirty,
-                DepthMode = DepthMode.NarrowViewUnbinned,
-                //DepthMode = DepthMode.WideView2x2Binned,
+                //DepthMode = DepthMode.NarrowViewUnbinned,
+                DepthMode = DepthMode.WideView2x2Binned,
+                //DepthMode = DepthMode.WideViewUnbinned,
                 ColorResolution = ColorResolution.R720p,
                 ColorFormat = ImageFormat.ColorBgra32,
                 WiredSyncMode = WiredSyncMode.Standalone,
             };
             _shouldGetCameraPosition = shouldGetCameraPosition;
+            App.Log($"Depth Mode: Width = {_config.DepthMode.WidthPixels()};  Height = {_config.DepthMode.HeightPixels()}");
+            App.Log($"Color Mode: Width = {_config.ColorResolution.WidthPixels()};  Height = {_config.ColorResolution.HeightPixels()}");
         }
 
         public void Run()
@@ -66,9 +87,11 @@ namespace CPRTouchVision.Models
             try
             {
                 _device.StartCameras(_config);
-                
+                App.Log("Camera started. Entering loop...");
+
                 while (_isRunning)
                 {
+
                     if ((ShouldCollectIMU || _shouldGetCameraPosition) && !_isIMURunning)
                     {
                         _device.StartImu();
@@ -83,10 +106,36 @@ namespace CPRTouchVision.Models
                         _isIMURunning = false;
                     }
 
-                    if (_device.TryGetCapture(out var capture))
+                    bool success = _device.TryGetCapture(out var capture, TimeSpan.FromMilliseconds(100));
+
+                    if (success && capture != null)
                     {
                         using (capture)
                         {
+                            // 1. Check if the Service requested a frame
+                            if (PendingRequest != null && !PendingRequest.Task.IsCompleted)
+                            {
+                                App.Log("Receive the Service requested a frame");
+                                    
+                                using var colorImage = capture.ColorImage;
+                                if (colorImage != null)
+                                {
+                                    byte[] managedData = new byte[colorImage.SizeBytes];
+                                    System.Runtime.InteropServices.Marshal.Copy(colorImage.Buffer, managedData, 0, managedData.Length);
+
+                                    PendingRequest.TrySetResult(new CalibrationFrame
+                                    {
+                                        ColorData = managedData,
+                                        Width = colorImage.WidthPixels,
+                                        Height = colorImage.HeightPixels
+                                    });
+
+                                    PendingRequest = null; // Reset
+                                    App.Log("🎯 BackgroundLoop captured calibration frame!");
+                                }
+                            }
+                            // -----------------
+
                             CaptureReady?.Invoke(this, new(capture));
                         }
                     }
@@ -141,7 +190,7 @@ namespace CPRTouchVision.Models
             }
             catch (Exception ex)
             {
-                Debug.WriteLine(ex);
+                App.Log(ex.ToString());
                 LoopFailed?.Invoke(this, new(ex));
             }
         }
