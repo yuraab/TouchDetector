@@ -1,4 +1,5 @@
-﻿using OBSharp;
+﻿using ABI.System.Numerics;
+using OBSharp;
 using OBSharp.Sensor;
 using OpenCvSharp;
 using System;
@@ -11,57 +12,45 @@ using System.Text;
 using System.Threading.Tasks;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using OB = OBSharp;
+using Plane = System.Numerics.Plane;
+using Vector2 = System.Numerics.Vector2;
+using Vector3 = System.Numerics.Vector3;
 
 namespace CPRTouchVision.Models
 {
-    public class TouchVolumeRect
+
+    /// <summary>
+    /// For each depth pixel ray, computes the entry (dmin) and exit (dmax) depth values
+    /// where the ray intersects the extruded quadrilateral volume.
+    /// The volume is defined as the extrusion of a quad (on a plane) toward the camera.
+    /// </summary>
+    public class TouchVolumeSlab
     {
-        public Vector3 WallNormal { get; }
-        public float WallDistance { get; }
+        // Camera intrinsics
+        private readonly float _fx, _fy, _cx, _cy;
 
-        public float MinOffset { get; }
-        public float MaxOffset { get; }
+        // Depth camera resolution  
+        private readonly int _fw, _fh;
 
-        public DepthPoint Corner1 { get; private set; }
-        public DepthPoint Corner2 { get; private set; }
-        public DepthPoint Corner3 { get; private set; }
-        public DepthPoint Corner4 { get; private set; }
+        // Plane equation: dot(N, P) = d
+        private readonly Vector3 _wallNormal;
+        private readonly float _wallDistance;
+        public Plane WallPlane => new Plane(_wallNormal, _wallDistance);  
 
-        public Vector3 WallOrigin;
-        public Vector3 HorizontalVector;
-        public Vector3 VerticalVector;
+        // Extrusion offsets along the plane normal TOWARD the camera
+        private readonly float _minOffset;
+        private readonly float _maxOffset;
 
-        public float SquaredHorizontal { get; private set; }
-        public float SquaredVertical { get; private set; }
-        public float HowAligned { get; private set; }
-        public float Denom { get; private set; }
-        public event Action WallNotAligned;
-        public Func<Vector3, bool> IsProjectedPointInVolume;
+        // The 4 corners of the quad ON the plane, in 3D world space (depth camera space)
+        // Must be ordered (convex, consistent winding)
+        private readonly Vector3[] _quadCorners; // length 4
 
-        public  DepthPoint[] WallLayer { get; }
-        private DepthPoint[] Layer1;
-        private DepthPoint[] Layer2;
+        // Precomputed: the 6 planes bounding the volume (2 face planes + 4 side planes)
+        private readonly (Vector3 Normal, float D)[] _boundingPlanes; // length 6
 
-        private readonly object _depthLock = new object();
-        private readonly Calibration _calibration;
-        //private readonly CalibrationGeometry;
-        private readonly int _fw;
-        private readonly int _fh;
-        private int _minSX;
-        private int _maxSX;
-        private int _minSY;
-        private int _maxSY;
-        private int _minD;
-        private int _maxD;
-
-        public int minSX => _minSX;
-        public int maxSX => _maxSX;
-        public int minSY => _minSY;
-        public int maxSY => _maxSY;
-
-        public TouchVolumeRect(Vector3 wallNormal, float wallDistance,
+        public TouchVolumeSlab(Vector3 wallNormal, float wallDistance,
                            float minOffset, float maxOffset,
-                           DepthPoint wallCorner1, DepthPoint wallCorner2,
+                           DepthPoint[] quadCorners,
                            int fw, int fh,
                            Calibration calibration
             )
@@ -69,71 +58,32 @@ namespace CPRTouchVision.Models
             _fw = fw;
             _fh = fh;
 
-            _calibration = calibration;
+            var intr = calibration.DepthCameraCalibration.Intrinsics.Parameters;
 
-            WallNormal = Vector3.Normalize(wallNormal);
-            WallDistance = wallDistance;
+            _cx = intr[0];
+            _cy = intr[1];
+            _fx = intr[2];
+            _fy = intr[3];
 
-            MinOffset = minOffset;
-            MaxOffset = maxOffset;
+            _wallNormal = Vector3.Normalize(wallNormal);
+            _wallDistance = wallDistance;
 
-            DepthPoint c1, c2, c3, c4;
+            _minOffset = minOffset;
+            _maxOffset = maxOffset;
 
-            TouchZoneHelper.ComputeAllFourCorners(
-                    wallCorner1,
-                    wallCorner2,
-                    WallNormal,
-                    _calibration,
-                    out c1,
-                    out c2,
-                    out c3,
-                    out c4);
 
-            (Corner1, Corner2, Corner3, Corner4) = (c1, c2, c3, c4);
+            _quadCorners = new Vector3[] { 
+                quadCorners[0].World, 
+                quadCorners[1].World, 
+                quadCorners[2].World, 
+                quadCorners[3].World 
+            };
 
-            HorizontalVector = Corner2.World - Corner1.World;
-            VerticalVector = Corner4.World - Corner1.World;
-            SquaredHorizontal = Vector3.Dot(HorizontalVector, HorizontalVector);
-            SquaredVertical = Vector3.Dot(VerticalVector, VerticalVector);
-            HowAligned = Vector3.Dot(HorizontalVector, VerticalVector);
-            Denom = HowAligned * HowAligned - SquaredHorizontal * SquaredVertical;
-            
-            if (Math.Abs(Denom) < 1e-5f)
-            {
-                WallNotAligned?.Invoke();  
-            }
-
-            Vector3 cameraForward = new Vector3(0, 0, -1);
-
-            // Compute cosine of angle between normal and view
-            float facing = Math.Abs(Vector3.Dot(WallNormal, cameraForward));
-            if (facing >= 0.9f)
-            {
-                IsProjectedPointInVolume = IsProjectedPointInVolumeWhenWallAligned;
-                App.Log($"Wall is almost aligned to camera ({facing}). Switch to simple calculation");
-            }
-            else
-            {
-                IsProjectedPointInVolume = IsProjectedPointInVolumeWhenWallNotAligned;
-                App.Log($"Wall is not aligned to camera ({facing}). Switch to complex calculation");
-            }
-
-            WallLayer = new DepthPoint[] { Corner1, Corner2, Corner3, Corner4 };
-            Layer1 = GetLayer(minOffset);
-            Layer2 = GetLayer(maxOffset);
-            _minSX = _fw;
-            _maxSX = 0;
-            _minSY = _fh;
-            _maxSY = 0;
-            _minD = int.MaxValue;
-            _maxD = 0;
 #if DEBUG
             App.Log($"Min/Max indexes: X => {_minSX}/{_maxSX}   Y => {_minSY}/{_maxSY}");
 #endif
             // Narrow iteration indexes by defining min/max screen SX/SY
 
-            UpdateScrenMinMax(Layer1);
-            UpdateScrenMinMax(Layer2);
 #if DEBUG
             App.Log($"Wall projection => Corner1: {Corner1.SX}:{Corner1.SY}  Corner2: {Corner3.SX}:{Corner3.SY}");
             App.Log($"Layer1 projection => Corner1: {Layer1[0].SX}:{Layer1[0].SY}  Corner2: {Layer1[2].SX}:{Layer1[2].SY}");
@@ -156,160 +106,173 @@ namespace CPRTouchVision.Models
             App.Log($"Processing size: {(maxSX - minSX)}*{(maxSY - minSY)} = {(maxSX - minSX) * (maxSY - minSY)}");
 
 #endif
-
-            // Precompute bounds for faster volume checks
-
-            _minX = MathF.Min(Corner1.World.X, Corner3.World.X);
-            _maxX = MathF.Max(Corner1.World.X, Corner3.World.X);
-            _minY = MathF.Min(Corner1.World.Y, Corner3.World.Y);
-            _maxY = MathF.Max(Corner1.World.Y, Corner3.World.Y);
-            _minZ = MathF.Min(Corner1.World.Z, Corner3.World.Z);
-            _maxZ = MathF.Max(Corner1.World.Z, Corner3.World.Z);
             
         }
-
-        private readonly float _minX, _maxX, _minY, _maxY, _minZ, _maxZ;
 
         /// <summary>
-        /// Checks if a given point lies inside the touchable volume.
+        /// Precompute the 6 half-space planes that define the extruded volume.
+        ///
+        /// The volume is a frustum-like prism:
+        ///
+        ///   Far face  (wall plane offset by extrudeMin along normal toward camera)
+        ///   Near face (wall plane offset by extrudeMax along normal toward camera)
+        ///   4 side planes (one per quad edge, extruded)
+        ///
+        ///   Camera
+        ///      |
+        ///   [_maxOffset] ← near face (closer to camera)
+        ///      |
+        ///   [_minOffset] ← far face  (closer to wall)
+        ///      |
+        ///   [wall plane / quad]
         /// </summary>
-        /// 
-
-        void UpdateScrenMinMax(DepthPoint[] layer)
+        private (Vector3 Normal, float D)[] PrecomputeBoundingPlanes()
         {
+            var planes = new (Vector3 Normal, float D)[6];
 
-            for (int i = 0; i < layer.Length; i++)
-            {
-                var p = layer[i];
-#if DEBUG
-                App.Log($"Layer index: X => {p.SX}   Y => {p.SY}");
-#endif
-                if (p.SX < _minSX) _minSX = p.SX;
-                if (p.SX > _maxSX) _maxSX = p.SX;
-                 
-                if (p.SY < _minSY) _minSY = p.SY;
-                if (p.SY > _maxSY) _maxSY = p.SY;
+            // Face 1: far face (wall side) — normal points TOWARD camera (+N direction)
+            // Points on this plane: quadCorners + _minOffset * N
+            Vector3 farFaceNormal = _wallNormal; // points away from wall toward camera
+            float farFaceD = _wallDistance + _minOffset;
+            planes[0] = (farFaceNormal, farFaceD);
 
-                if (p.World.Z < _minD) _minD = (int)Math.Floor(p.World.Z);
-                if (p.World.Z > _maxD) _maxD = (int)Math.Ceiling(p.World.Z);
-             }
-        } 
+            // Face 2: near face (camera side) — normal points TOWARD wall (-N direction)
+            // Points on this plane: quadCorners + _maxOffset * N
+            Vector3 nearFaceNormal = -_wallNormal;
+            float nearFaceD = -(_wallDistance + _maxOffset);
+            planes[1] = (nearFaceNormal, nearFaceD);
 
-
-        private Vector3 Recover3DPointFromProjection(Vector3 projection, float offset)
-        {
-            Vector3 unitNormal = Vector3.Normalize(WallNormal);
-            return projection + unitNormal * offset; // toward the camera
-        }
-
-        private DepthPoint[] GetLayer(float offset)
-        {
-            DepthPoint[] result = new DepthPoint[4];
-
-            int x, y;
+            // 4 side planes — one per quad edge
+            // For each edge (A→B), the side plane normal is perpendicular to the edge
+            // and points INWARD (toward the interior of the quad)
             for (int i = 0; i < 4; i++)
             {
-                var point3d = Recover3DPointFromProjection(WallLayer[i].World, offset);
-                var point2d = _calibration.Convert3DTo2D(new(point3d.X, point3d.Y, point3d.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-                if (point2d.HasValue)
-                {
-                    x = (int)point2d.Value.X;
-                    y = (int)point2d.Value.Y;
-                }
-                else
-                {
-                    x = WallLayer[i].SX;
-                    y = WallLayer[i].SY;
-                }
-                result[i] = DepthPoint.From(x, y, point3d.X, point3d.Y, point3d.Z);
+                Vector3 A = _quadCorners[i];
+                Vector3 B = _quadCorners[(i + 1) % 4];
+
+                Vector3 edge = B - A;
+
+                // Side plane normal = cross(edge, planeNormal), then normalize
+                // This gives a vector perpendicular to the edge, lying in the wall plane
+                Vector3 sideNormal = Vector3.Normalize(Vector3.Cross(edge, _wallNormal));
+
+                // Ensure it points INWARD: test against the opposite corner
+                Vector3 opposite = _quadCorners[(i + 2) % 4];
+                if (Vector3.Dot(sideNormal, opposite - A) < 0)
+                    sideNormal = -sideNormal;
+
+                float sideD = Vector3.Dot(sideNormal, A);
+                planes[2 + i] = (sideNormal, sideD);
             }
-            return result;
+
+            return planes;
         }
-
-        public bool IsPointInVolume(Vector3 point)
+        /// <summary>
+        /// For a single depth pixel (x, y), compute dmin and dmax where
+        /// the pixel ray intersects the extruded quad volume.
+        ///
+        /// Returns false if no intersection.
+        ///
+        /// The ray is: P(t) = t * rayDir, origin at camera (0,0,0)
+        /// where rayDir = ((x-cx)/fx, (y-cy)/fy, 1.0) — not normalized,
+        /// so t == Z (depth value in meters directly).
+        /// </summary>
+        public bool ComputeRayDepthRange(int x, int y, out float dmin, out float dmax)
         {
-            // Distance from point to wall plane
-            float distanceToPlane = Vector3.Dot(WallNormal, point) + WallDistance;
+            dmin = float.NegativeInfinity;
+            dmax = float.PositiveInfinity;
 
-            if (distanceToPlane < MinOffset || distanceToPlane > MaxOffset)
-                return false;
+            // Ray direction (unnormalized: t = Z depth directly)
+            var rayDir = new Vector3(
+                (x - _cx) / _fx,
+                (y - _cy) / _fy,
+                1.0f
+            );
 
-            // Project point onto wall plane
-            Vector3 projected = point - WallNormal * distanceToPlane;
-
-            return IsProjectedPointInVolume(projected);
-        }
-
-        public bool IsProjectedPointInVolumeWhenWallNotAligned(Vector3 p)
-        {
-            Vector3 w = p - Corner1.World;       // vector from origin to point
-
-            float wu = Vector3.Dot(w, HorizontalVector);
-            float wv = Vector3.Dot(w, VerticalVector);
-
-            float s = (HowAligned * wv - SquaredVertical * wu) / Denom;
-            float t = (HowAligned * wu - SquaredHorizontal * wv) / Denom;
-            return s >= 0 && s <= 1 && t >= 0 && t <= 1;
-        }
-
-        public bool IsProjectedPointInVolumeWhenWallAligned(Vector3 projected)
-        {
-            // Check if projected point lies within rectangular bounds
-            return projected.X >= _minX && projected.X <= _maxX &&
-                   projected.Y >= _minY && projected.Y <= _maxY &&
-                   projected.Z >= _minZ && projected.Z <= _maxZ;
-        }
-
-        public List<Vector3> Extract3DPointsInsideVolume(ushort[] depthImage, CalibrationGeometry calibrationGeometry)
-        {
-            
-            var result = new List<Vector3>();
-            int step = 2;
-            int w = maxSX - minSX;
-            int h = maxSY - minSY;
-            var size = w * h;
-            lock (_depthLock)
+            // Slab method: intersect ray with all 6 half-spaces
+            // For each plane: dot(N, P(t)) >= D  →  t * dot(N, rayDir) >= D
+            // → t >= D / dot(N,rd)  or  t <= D / dot(N,rd) depending on sign
+            foreach (var (normal, planeD) in _boundingPlanes)
             {
-                var localLists = new List<Vector3>[Environment.ProcessorCount];
+                float denom = Vector3.Dot(normal, rayDir);
+                float numer = planeD; // dot(N, origin)=0 since origin=(0,0,0)
 
-                Parallel.For(0, localLists.Length, i => localLists[i] = new List<Vector3>());
-
-                Parallel.ForEach(
-                    Partitioner.Create(minSY, maxSY),
-                    new ParallelOptions { MaxDegreeOfParallelism = localLists.Length },
-                    () => new List<Vector3>(),
-                    (range, _, localList) =>
+                if (MathF.Abs(denom) < 1e-6f)
+                {
+                    // Ray is parallel to this plane
+                    // Check if origin is on the correct side
+                    // dot(N, origin) >= planeD → 0 >= planeD
+                    if (0 < planeD)
                     {
-                        for (int y = range.Item1; y < range.Item2; y++)
-                        {
-                            if ((y - minSY) % step != 0)
-                                continue;
+                        // Origin is outside this half-space → no intersection possible
+                        dmin = dmax = 0;
+                        return false;
+                    }
+                    // else: origin inside this slab, no constraint from this plane
+                    continue;
+                }
 
-                            for (int x = minSX; x < maxSX; x += step)
-                            {
-                                int index = y * _fw + x;
-                                float d = (float)depthImage[index];
-                                if (d <= 0 || d < _minD || d > _maxD) continue;
+                float t = numer / denom;
 
-                                var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
-                                if (world == null) continue;
+                if (denom > 0)
+                    // Ray enters this half-space at t (dmin moves up)
+                    dmin = MathF.Max(dmin, t);
+                else
+                    // Ray exits this half-space at t (dmax moves down)
+                    dmax = MathF.Min(dmax, t);
 
-                                var vector = new Vector3(world.Value.X, world.Value.Y, world.Value.Z);
-                                if (IsPointInVolume(vector)) localList.Add(vector);
-                            }
-                        }
-                        return localList;
-                    },
-                    localList => {
-                        lock (result)
-                        {
-                            result.AddRange(localList);
-                        }
-                    });
-
+                if (dmin > dmax)
+                    return false; // Empty intersection
             }
-            return result;
+
+            // Clamp to positive depth (in front of camera)
+            dmin = MathF.Max(dmin, 0f);
+
+            return dmin <= dmax && dmax > 0f;
         }
+
+        /// <summary>
+        /// Process the full depth image and return all pixels whose ray
+        /// intersects the volume, along with their per-pixel dmin/dmax.
+        /// </summary>
+        public List<(int X, int Y, float DMin, float DMax)> ProcessDepthImage(
+            int imageWidth, int imageHeight)
+        {
+            var results = new List<(int, int, float, float)>();
+
+            for (int y = 0; y < imageHeight; y++)
+                for (int x = 0; x < imageWidth; x++)
+                {
+                    if (ComputeRayDepthRange(x, y, out float dmin, out float dmax))
+                        results.Add((x, y, dmin, dmax));
+                }
+
+            return results;
+        }
+
+        /// <summary>
+        /// Precompute a lookup table: for each pixel (x,y), store (dmin, dmax).
+        /// Returns null for pixels whose ray doesn't intersect the volume.
+        /// Call this ONCE after calibration, reuse every frame.
+        /// </summary>
+        public (float DMin, float DMax)?[,] PrecomputeDepthRangeLookup(
+            int imageWidth, int imageHeight)
+        {
+            var lut = new (float DMin, float DMax)?[imageWidth, imageHeight];
+
+            Parallel.For(0, imageHeight, y =>
+            {
+                for (int x = 0; x < imageWidth; x++)
+                {
+                    if (ComputeRayDepthRange(x, y, out float dmin, out float dmax))
+                        lut[x, y] = (dmin, dmax);
+                }
+            });
+
+            return lut;
+        }
+
+
     }
 
     public static class TouchZoneHelper
@@ -506,7 +469,7 @@ namespace CPRTouchVision.Models
 
             UpdateScreenMinMax(Polygon, minOffset);
             UpdateScreenMinMax(Polygon, maxOffset);
-#if DEBUG
+#if DEBUG || TEST
             App.Log($"Filter points should be into => {WallDistance - MinOffset} - {WallDistance - MaxOffset}");
             App.Log($"Filter points into distance => {_maxD} - {_minD}");
             App.Log($"Filter points into X => {_minSX} - {_maxSX}");
@@ -524,7 +487,7 @@ namespace CPRTouchVision.Models
                 new Point2f(src2.X, src2.Y),
                 new Point2f(src3.X, src3.Y)
             };
-#if DEBUG
+#if DEBUG || TEST
             App.Log($"Projected points in the local coordinates");
             App.Log($"Top Left => {src0.X}:{src0.Y}");
             App.Log($"Top Right => {src1.X}:{src1.Y}");
@@ -591,7 +554,7 @@ namespace CPRTouchVision.Models
                 if (sy > _maxSY) _maxSY = sy;
 
                 var depth = TransformToDepth(new OBSharp.Float3(shifted.X, shifted.Y, shifted.Z));
-#if DEBUG
+#if DEBUG || TEST
                 App.Log($"Original Point => {p.World} Shifted Point => {shifted} has depth {depth}");
 
 #endif
