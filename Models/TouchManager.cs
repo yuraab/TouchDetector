@@ -261,6 +261,20 @@ namespace CPRTouchVision.Models
         { 
             CalibrationStatus = $"{Constants.FailureIndicatorMessage}: {reason}";
             _isError = true;
+            switch (reason)
+            {
+                case string s when s.StartsWith(Constants.ZoneDetectionFailed):
+                    //InfoMessage = "Calibration failed: No valid points detected. Please ensure the camera has a clear view of the wall and try again.";
+                    Changed?.Invoke(this, TouchManagerEventType.CalibrationFailed);
+                    break;
+                case "Camera position not defined":
+                    InfoMessage = "Calibration failed: Camera position is not defined. Please ensure the camera is properly mounted and try again.";
+                    break;
+                default:
+                    InfoMessage = $"Calibration failed: {reason}";
+                    break;
+            }
+            
         }
 
 
@@ -457,7 +471,7 @@ namespace CPRTouchVision.Models
                 Start();
             }
         }
-        private void Start()
+        private async Task Start()
         {
             App.Log("Trying Start Capture");
             if (IsRunning || !Device.TryOpen(out var device)) return;
@@ -472,12 +486,12 @@ namespace CPRTouchVision.Models
             _transformation = new Transformation(_calibration);
 
             _captureLoop.Run();
-            StartTouchLoop();
+            await StartTouchLoop();
             IsRunning = true;
 
         }
 
-        private void StartTouchLoop()
+        private async Task StartTouchLoop()
         {
             CheckIsReadyRunTouchLoop();
 #if DEBUG || TEST
@@ -493,6 +507,16 @@ namespace CPRTouchVision.Models
                                                 _minWallDepth, _maxWallDepth,
                                                 _fw, _fh, _calibration
                                                );
+
+            var alternateDetectableSpace = await TouchVolumeSlab.CreateAsync(
+                                                _planeNormal, 
+                                                -_planeD,
+                                                MinOffset*10,   //convert from centimeters
+                                                MaxOffset*10,   //convert from centimeters
+                                                TouchZonePoints,
+                                                _fw, _fh, _calibration
+                                               );
+
 
             _touchLoop = new(_detectableSpace, _calibration, _exclusionZones);
             _touchLoop.TouchFrameReady += OnTouchFrameReady;
@@ -510,6 +534,10 @@ namespace CPRTouchVision.Models
             IsRunningTrackTouch = true;
             _isReadyReceiveNewCapture = true;
             _detectableSpace.WallNotAligned += OnWallNotAligned;
+
+
+
+
         }
 
         private void OnWallNotAligned()
@@ -977,11 +1005,11 @@ namespace CPRTouchVision.Models
             await File.WriteAllBytesAsync(CONFIG_PATH, data);
         }
 
-        private bool IsPointOnPlane(System.Numerics.Vector3 point, System.Numerics.Vector3 planeNormal, float planeDistance)
+        private bool IsPointOnPlane(Vector3 point, Vector3 planeNormal, float planeDistance)
         {
             const float epsilon = 10;
-            float dist = System.Numerics.Vector3.Dot(planeNormal, point) + planeDistance;
-#if DEBUG
+            float dist = Vector3.Dot(planeNormal, point) + planeDistance;
+#if DEBUG || TEST
             App.Log($"Is point {point} on plane with planeNormal = {planeNormal} and planeDistance = {planeDistance} => {MathF.Abs(dist) < epsilon}. Distance = {MathF.Abs(dist)}");
 #endif
             return MathF.Abs(dist) < epsilon;
@@ -1153,8 +1181,8 @@ namespace CPRTouchVision.Models
                 maxY = Math.Max((int)point.Y, maxY);
             }
 
-            int w = maxX - minX;
-            int h = maxY - minY;
+            int w = maxX - minX + 1;
+            int h = maxY - minY + 1;
             return (minX, minY, w, h);
         }
 
@@ -1326,23 +1354,56 @@ namespace CPRTouchVision.Models
             float distance = numerator / denominator;
             cameraPosition = new Vector3(distance, 0, 0); // ← Adjust axis if wall is along Z instead of X
 
-#if DEBUG
+#if DEBUG || TEST
             App.Log($"Plane fitting done. {plane}");
-            App.Log($"Camera position {cameraPosition}");
+
+            App.Log($"minX = {minX}, minY = {minY}, w = {w}, h = {h}, _fw = {_fw}, _fh = {_fh}");
+            App.Log($"Length winDepth: {winDepth.Length}");
+
+            Vector3[] pp = new Vector3[_touchZonePoints.Count];
+            for (int i = 0; i < _touchZonePoints.Count; i++)
+            {
+                var p = _touchZonePoints[i];
+                OBSharp.Float2 p2 = new(p.SX, p.SY);
+                int roiIndex = (p.SY - minY) * w + (p.SX - minX);
+                var d = winDepth[roiIndex];
+                var p3 = _calibration.Convert2DTo3D(p2, d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
+                pp[i] = new Vector3(p3.Value.X, p3.Value.Y, p3.Value.Z);
+            }
+
+            var planeD = PlaneChecker.FindPrimaryPlane(
+                winDepth,
+                w, h,
+                _calibration
+            );
+
+            App.Log($"Alternative calculation for plane from depth map: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
+
+            var planeD2 = PlaneChecker.FitPlaneToPoints(pp);
+
+            App.Log($"Simple calculation for plane from depth map: {planeD2.Normal.X:F4}x + {planeD2.Normal.Y:F4}y + {planeD2.Normal.Z:F4}z + {planeD2 .D:F4} = 0");
+
 
             foreach (var p in _touchZonePoints)
-            {
-                //SKPoint p2 = new(point.X, point.Y);
-                //var p = _calibration.Convert2DTo3D(new(point.X, point.Y), point.Z, CalibrationGeometry.Color, CalibrationGeometry.Depth);
-                //Vector3 p3 = new Vector3(p.Value.X, p.Value.Y, p.Value.Z);
-                App.Log($"Checking if touchZonePoint point {p} on wall = {IsPointOnPlane(p.World, _planeNormal, _planeD)}");
-                var p2 = _calibration.Convert3DTo2D(p.World.ToFloat3(), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-                App.Log($"Checking if calibrating point back to screen  {p2.Value}");
+            {              
+                App.Log($"Checking if touchZonePoint point {p.World} on wall = {IsPointOnPlane(p.World, _planeNormal, _planeD)}");
+
+                App.Log($"Checking if touchZonePoint point {p.World} on alternative wall = {IsPointOnPlane(p.World, planeD.Value.Normal, planeD.Value.D)}");
+
+                App.Log($"Checking if touchZonePoint point {p.World} on simple wall = {IsPointOnPlane(p.World, planeD2.Normal, planeD2.D)}");
+                //var pD = _calibration.Convert3DTo2D(p.World.ToFloat3(), CalibrationGeometry.Depth, CalibrationGeometry.Color);
+                //App.Log($"Checking if calibrating point back to screen  {pD.Value}");
             }
-            Helper.CheckPlane(points, plane);
+
+            PlaneChecker.CheckPlane(points, plane);
+
+            PlaneChecker.CheckPlane(points, new Plane(planeD.Value.Normal, planeD.Value.D));
+
+            PlaneChecker.CheckPlane(points, new Plane(planeD2.Normal, planeD2.D));
+
 #endif
-           // TODO: - cuts out more then needed, in a real world rock climbing walls setup, needs adjustment
-           // _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
+            // TODO: - cuts out more then needed, in a real world rock climbing walls setup, needs adjustment
+            // _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
 
             //await SaveConfig(); 
             IsTouchZoneDefining = false;

@@ -64,6 +64,7 @@ namespace CPRTouchVision.Models
                 WiredSyncMode = WiredSyncMode.Standalone,
             };
             _shouldGetCameraPosition = shouldGetCameraPosition;
+
             App.Log($"Depth Mode: Width = {_config.DepthMode.WidthPixels()};  Height = {_config.DepthMode.HeightPixels()}");
             App.Log($"Color Mode: Width = {_config.ColorResolution.WidthPixels()};  Height = {_config.ColorResolution.HeightPixels()}");
         }

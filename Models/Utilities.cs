@@ -1,4 +1,5 @@
-﻿using System;
+﻿using OpenCvSharp;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -29,6 +30,10 @@ namespace CPRTouchVision.Models
         public const string ProgressChannel = "progress_channel";
         public const string CompletionChannel = "completion_channel";
         public const string FailureChannel = "failure_channel";
+
+        //Messages
+        public const string ZoneDetectionFailed = "Failed to detect touch zone.";
+
 
         [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_SUB_FOLDER = "CPR Touch Vision";
@@ -74,5 +79,13 @@ namespace CPRTouchVision.Models
         }
 
         
+    }
+
+    public interface ICalibrationProgress
+    {
+        void OnStatus(string message);
+        void OnProgress(double value); // 0..1
+        void OnCompleted(Point[] points);
+        void OnFailed(string reason);
     }
 }

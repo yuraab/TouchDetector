@@ -48,12 +48,24 @@ namespace CPRTouchVision.Models
         // Precomputed: the 6 planes bounding the volume (2 face planes + 4 side planes)
         private readonly (Vector3 Normal, float D)[] _boundingPlanes; // length 6
 
-        public TouchVolumeSlab(Vector3 wallNormal, float wallDistance,
-                           float minOffset, float maxOffset,
-                           DepthPoint[] quadCorners,
-                           int fw, int fh,
-                           Calibration calibration
-            )
+        // LUT
+        private readonly (int DMin, int DMax)?[,] _lut;
+
+        // Tight bounds
+        private int _minX, _maxX, _minY, _maxY;
+
+        private bool _isReady = false;
+        public bool IsReady => _isReady;
+
+        private readonly ICalibrationProgress _progress;
+
+        private TouchVolumeSlab(
+            Vector3 wallNormal, float wallDistance,
+            float minOffset, float maxOffset,
+            DepthPoint[] quadCorners,
+            int fw, int fh,
+            Calibration calibration
+        )
         {
             _fw = fw;
             _fh = fh;
@@ -79,35 +91,50 @@ namespace CPRTouchVision.Models
                 quadCorners[3].World 
             };
 
-#if DEBUG
-            App.Log($"Min/Max indexes: X => {_minSX}/{_maxSX}   Y => {_minSY}/{_maxSY}");
-#endif
-            // Narrow iteration indexes by defining min/max screen SX/SY
+            _boundingPlanes = PrecomputeBoundingPlanes();
 
-#if DEBUG
-            App.Log($"Wall projection => Corner1: {Corner1.SX}:{Corner1.SY}  Corner2: {Corner3.SX}:{Corner3.SY}");
-            App.Log($"Layer1 projection => Corner1: {Layer1[0].SX}:{Layer1[0].SY}  Corner2: {Layer1[2].SX}:{Layer1[2].SY}");
-            App.Log($"Layer2 projection => Corner1: {Layer2[0].SX}:{Layer2[0].SY}  Corner2: {Layer2[2].SX}:{Layer2[2].SY}");
-            App.Log($"Min/Max indexes: X => {_minSX}/{_maxSX}   Y => {_minSY}/{_maxSY}");
-            App.Log($"Min/Max depth: {_minD}/{_maxD}");
-
-            foreach (var point in WallLayer)
-            {
-                App.Log($"Point of WallLayer {point.World} Distance: {point.World.Length()}");
-            }
-            foreach (var point in Layer1)
-            {
-                App.Log($"Point of Layer1 {point.World} Distance: {point.World.Length()}");
-            }
-            foreach (var point in Layer2)
-            {
-                App.Log($"Point of Layer2 {point.World} Distance: {point.World.Length()}");
-            }
-            App.Log($"Processing size: {(maxSX - minSX)}*{(maxSY - minSY)} = {(maxSX - minSX) * (maxSY - minSY)}");
-
-#endif
-            
+            _lut = new (int DMin, int DMax)?[_fw, _fh];
         }
+
+        /// <summary>
+        /// Factory method — construction and heavy computation off the UI thread.
+        /// </summary>
+        public static async Task<TouchVolumeSlab> CreateAsync(
+            Vector3 wallNormal, float wallDistance,
+            float minOffset, float maxOffset,
+            DepthPoint[] quadCorners,
+            int fw, int fh,
+            Calibration calibration,
+            IProgress<string>? progress = null)
+        {
+            var instance = new TouchVolumeSlab(
+                wallNormal, wallDistance,
+                minOffset, maxOffset,
+                quadCorners,
+                fw, fh,
+                calibration
+            );
+
+            await Task.Run(() =>
+            {
+                progress?.Report("Building LUT...");
+                instance.BuildLut();
+
+                progress?.Report("Computing bounds...");
+                (instance._minX, instance._maxX,
+                 instance._minY, instance._maxY) = instance.ComputeTightBounds();
+
+#if DEBUG || TEST
+
+
+                App.Log($"Min/Max indexes: X => {instance._minX}/{instance._maxX}; Y => {instance._minY}/{instance._maxY}");
+#endif
+                instance._isReady = true;
+            });
+
+            return instance;
+        }
+
 
         /// <summary>
         /// Precompute the 6 half-space planes that define the extruded volume.
@@ -177,10 +204,10 @@ namespace CPRTouchVision.Models
         /// where rayDir = ((x-cx)/fx, (y-cy)/fy, 1.0) — not normalized,
         /// so t == Z (depth value in meters directly).
         /// </summary>
-        public bool ComputeRayDepthRange(int x, int y, out float dmin, out float dmax)
+        private bool ComputeRayDepthRange(int x, int y, out int dmin, out int dmax)
         {
-            dmin = float.NegativeInfinity;
-            dmax = float.PositiveInfinity;
+            dmin = int.MinValue;  
+            dmax = int.MaxValue;
 
             // Ray direction (unnormalized: t = Z depth directly)
             var rayDir = new Vector3(
@@ -216,62 +243,105 @@ namespace CPRTouchVision.Models
 
                 if (denom > 0)
                     // Ray enters this half-space at t (dmin moves up)
-                    dmin = MathF.Max(dmin, t);
+                    dmin = (int) MathF.Max(dmin, t);
                 else
                     // Ray exits this half-space at t (dmax moves down)
-                    dmax = MathF.Min(dmax, t);
+                    dmax = (int) MathF.Min(dmax, t);
 
                 if (dmin > dmax)
                     return false; // Empty intersection
             }
 
             // Clamp to positive depth (in front of camera)
-            dmin = MathF.Max(dmin, 0f);
+            dmin = (int) MathF.Max(dmin, 0f);
 
             return dmin <= dmax && dmax > 0f;
         }
 
-        /// <summary>
-        /// Process the full depth image and return all pixels whose ray
-        /// intersects the volume, along with their per-pixel dmin/dmax.
-        /// </summary>
-        public List<(int X, int Y, float DMin, float DMax)> ProcessDepthImage(
-            int imageWidth, int imageHeight)
-        {
-            var results = new List<(int, int, float, float)>();
-
-            for (int y = 0; y < imageHeight; y++)
-                for (int x = 0; x < imageWidth; x++)
-                {
-                    if (ComputeRayDepthRange(x, y, out float dmin, out float dmax))
-                        results.Add((x, y, dmin, dmax));
-                }
-
-            return results;
-        }
 
         /// <summary>
         /// Precompute a lookup table: for each pixel (x,y), store (dmin, dmax).
         /// Returns null for pixels whose ray doesn't intersect the volume.
         /// Call this ONCE after calibration, reuse every frame.
         /// </summary>
-        public (float DMin, float DMax)?[,] PrecomputeDepthRangeLookup(
-            int imageWidth, int imageHeight)
+        private void BuildLut()
         {
-            var lut = new (float DMin, float DMax)?[imageWidth, imageHeight];
-
-            Parallel.For(0, imageHeight, y =>
+            Parallel.For(0, _fh, y =>
             {
-                for (int x = 0; x < imageWidth; x++)
+                for (int x = 0; x < _fw; x++)
                 {
-                    if (ComputeRayDepthRange(x, y, out float dmin, out float dmax))
-                        lut[x, y] = (dmin, dmax);
+                    if (ComputeRayDepthRange(x, y, out int dmin, out int dmax))
+                        _lut[x, y] = (dmin, dmax);
                 }
             });
-
-            return lut;
         }
 
+        private (int MinX, int MaxX, int MinY, int MaxY) ComputeTightBounds()
+        {
+            int minX = int.MaxValue, maxX = int.MinValue;
+            int minY = int.MaxValue, maxY = int.MinValue;
+
+            for (int y = 0; y < _fh; y++)
+                for (int x = 0; x < _fw; x++)
+                {
+                    if (_lut[x, y] == null) continue;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+
+            return (
+                minX == int.MaxValue ? 0 : minX,
+                maxX == int.MinValue ? _fw - 1 : maxX,
+                minY == int.MaxValue ? 0 : minY,
+                maxY == int.MinValue ? _fh - 1 : maxY
+            );
+        }
+
+        public List<(int X, int Y)> CheckFrame(ushort[] depthImage)
+        {
+            var result = new List<(int X, int Y)>();
+
+            for (int y = _minY; y <= _maxY; y++)
+                for (int x = _minX; x <= _maxX; x++)
+                {
+                    var range = _lut[x, y];
+                    if (range == null) continue;
+
+                    float d = depthImage[y * _fw + x];
+
+                    if (d >= range.Value.DMin && d <= range.Value.DMax)
+                        result.Add((x, y));
+                }
+
+            return result;
+        }
+
+        public List<(int X, int Y)> CheckFrameParallel(ushort[] depthImage)
+        {
+            var result = new List<(int X, int Y)>();
+
+            Parallel.For(_minY, _maxY + 1,
+                () => new List<(int X, int Y)>(),
+                (y, _, localList) =>
+                {
+                    for (int x = _minX; x <= _maxX; x++)
+                    {
+                        var range = _lut[x, y];
+                        if (range == null) continue;
+
+                        float d = depthImage[y * _fw + x] / 1000f;
+
+                        if (d >= range.Value.DMin && d <= range.Value.DMax)
+                            localList.Add((x, y));
+                    }
+                    return localList;
+                },
+                localList => { lock (result) result.AddRange(localList); });
+
+            return result;
+        }
 
     }
 

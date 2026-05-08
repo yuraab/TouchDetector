@@ -35,14 +35,6 @@ namespace CPRTouchVision.Models
         void Hide();
     }
 
-    public interface ICalibrationProgress
-    {
-        void OnStatus(string message); 
-        void OnProgress(double value); // 0..1
-        void OnCompleted(Point[] points); 
-        void OnFailed(string reason); 
-    }
-
     public class OpenCVPointConverter : JsonConverter<Point>
     {
         public override Point Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
@@ -201,7 +193,7 @@ namespace CPRTouchVision.Models
                 
                 if (points == null || points.Length < 4) 
                 {
-                    _progress.OnFailed($"Failed to detect touch zone. Detected points => {points}");
+                    _progress.OnFailed($"{Constants.ZoneDetectionFailed} Detected points => {points}");
                     return;
                 }
 
