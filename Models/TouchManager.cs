@@ -1275,7 +1275,9 @@ namespace CPRTouchVision.Models
 
             int minX, minY, w, h;
             var touchZonePoints = _touchZonePoints.Select(p => new Vector3(p.SX, p.SY, 0)).ToList();
-            (minX, minY, w, h) = GetCalibrationWindow(touchZonePoints);
+            
+            //(minX, minY, w, h) = GetCalibrationWindow(touchZonePoints);
+            minX = 0; minY = 0; w = _fw; h = _fh; // use full frame for plane fitting to be more robust to outliers
             
             float minD = float.MaxValue, maxD = 0f;
             _winAccum = new WindowAccumulator(minX, minY, w, h, _fw, _fh, _accCapacityPerPixel);
@@ -1292,40 +1294,49 @@ namespace CPRTouchVision.Models
                     WindowAccumulator? acc;
                     lock (_collectLock) acc = _winAccum;
                     if (acc != null && acc.FramesCollected >= _targetFrames) break;
-                    if (sw.ElapsedMilliseconds > 4000) break; // тайм-аут, чтобы не зависнуть
+                    if (sw.ElapsedMilliseconds > 4000) break; // time out ro avoid stuck
                     await Task.Delay(5);
                 }
             });
 
-            float[] winDepth = new float[w * h];
+            ushort[] winDepth = new ushort[w * h];
             WindowAccumulator? ready;
             lock (_collectLock) { ready = _winAccum; _winAccum = null; IsCollectingFrames = false; }
             if (ready == null) return;
 
             ready.BuildDepthMap(winDepth, useMedian: true);
 
-            var points = new List<Vector3>(winDepth.Length);
+            var pointsC = new ConcurrentBag<Vector3>();
 
-            Parallel.For(0, winDepth.Length, i =>
+            Parallel.For(0, h, y =>
             {
-                int x = minX + i % w;
-                int y = minY + i / w;
-                int index = y * _fw + x;
+            int row = y * w;
 
-                float d = winDepth[i];
-                if (d <= 0) return;
+                for (int x = 0; x < w; x++)
+                {
+                    int i = row + x;
 
-                var world = _calibration.Convert2DTo3D(new(x, y), d,
-                                CalibrationGeometry.Color, CalibrationGeometry.Depth);
-                if (world == null) return;
+                    ushort d = winDepth[i];
+                    if (d == 0)
+                        continue;
 
-                var point = new Vector3(
-                            world.Value.X,
-                            world.Value.Y,
-                            world.Value.Z
-                        );
-                lock (points) points.Add(point);
+                    int fx = minX + x;
+                    int fy = minY + y;
 
+                    var world = _calibration.Convert2DTo3D(
+                        new(x, y),
+                        d,
+                        CalibrationGeometry.Depth, //CalibrationGeometry.Color,
+                        CalibrationGeometry.Depth);
+
+                    if (world == null)
+                        return;
+
+                    pointsC.Add(new Vector3(
+                        world.Value.X,
+                        world.Value.Y,
+                        world.Value.Z));
+                }
             });
 
             //float planeD;
@@ -1335,6 +1346,8 @@ namespace CPRTouchVision.Models
             //(planeD, planeNormal) = await Task.Run(() => FitPlaneSVD2(points.ToArray()));
 
             InfoMessage = Constants.FittingPlane;
+
+            var points = pointsC.Where(p => !p.IsZero()).ToList();
 
             var fitter = new RANSACPlaneFitter(iterations: 1000, threshold: 10);
             PlaneResult plane = await Task.Run(() => fitter.FitPlane(points));

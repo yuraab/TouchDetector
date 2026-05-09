@@ -46,7 +46,7 @@ namespace CPRTouchVision.Models
         /// Works entirely in depth camera space using depth intrinsics.
         /// </summary>
         public static (Vector3 Normal, float D)? FindPrimaryPlane(
-            float[] depthImage,
+            ushort[] depthImage,
             int imageWidth,
             int imageHeight,
             Calibration calibration,
@@ -227,5 +227,24 @@ namespace CPRTouchVision.Models
 
             return FitPlaneToPoints(pts);
         }
+
+        /// <summary>
+        /// Projects a 3D point onto a plane along the plane normal.
+        /// Result is the closest point on the plane to the input point.
+        /// </summary>
+        public static Vector3 ProjectPointOntoPlane(Vector3 point, Vector3 planeNormal, float planeD)
+        {
+            // Signed distance from point to plane
+            float distance = Vector3.Dot(planeNormal, point) - planeD;
+
+            // Move point along normal by that distance
+            return point - distance * planeNormal;
+        }
+
+        public static Vector3 ProjectPointOntoPlane(Vector3 point, Plane plane)
+        {
+            return ProjectPointOntoPlane(point, plane.Normal, plane.D);
+        }
     }
+
 }
