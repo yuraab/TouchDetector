@@ -53,7 +53,7 @@ namespace CPRTouchVision.Models
             float inlierThresholdMeters = 10f,  // 1cm — tighter = more precise plane
             int ransacIterations = 500,
             int minInliers = 1000,                // reject if plane has too few supporters
-            int sampleStep = 4)                   // subsample to speed up — every 4th pixel
+            int sampleStep = 1)                   // subsample to speed up — every 4th pixel
         {
             var intr = calibration.DepthCameraCalibration.Intrinsics.Parameters;
 

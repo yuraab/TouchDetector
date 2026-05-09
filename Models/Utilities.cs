@@ -30,10 +30,13 @@ namespace CPRTouchVision.Models
         public const string ProgressChannel = "progress_channel";
         public const string CompletionChannel = "completion_channel";
         public const string FailureChannel = "failure_channel";
+        public const string PlaneFittingFailed = "Plane fitting failed. Not enough inliers or points.";
+        public const string WallPlaneNormalZero = "The wall plane normal cannot be a zero vector.";
 
         //Messages
         public const string ZoneDetectionFailed = "Failed to detect touch zone.";
-
+        public const string CollectingFramesForPlaneFitting = "Collecting frames for plane fitting... Please wait and do not move.";
+        public const string FittingPlane = "Fitting plane... Please wait.";
 
         [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_SUB_FOLDER = "CPR Touch Vision";

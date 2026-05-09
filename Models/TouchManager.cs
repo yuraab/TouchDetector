@@ -273,8 +273,7 @@ namespace CPRTouchVision.Models
                 default:
                     InfoMessage = $"Calibration failed: {reason}";
                     break;
-            }
-            
+            }  
         }
 
 
@@ -1282,9 +1281,11 @@ namespace CPRTouchVision.Models
             _winAccum = new WindowAccumulator(minX, minY, w, h, _fw, _fh, _accCapacityPerPixel);
             IsCollectingFrames = true;
 
+            InfoMessage = Constants.CollectingFramesForPlaneFitting;
+
             await Task.Run(async () =>
             {
-                // safeguard: максимум 2 секунды при 15 FPS → подстрой при необходимости
+                // safeguard
                 var sw = Stopwatch.StartNew();
                 while (true)
                 {
@@ -1332,14 +1333,15 @@ namespace CPRTouchVision.Models
             Vector3 cameraPosition;
 
             //(planeD, planeNormal) = await Task.Run(() => FitPlaneSVD2(points.ToArray()));
-            
+
+            InfoMessage = Constants.FittingPlane;
+
             var fitter = new RANSACPlaneFitter(iterations: 1000, threshold: 10);
             PlaneResult plane = await Task.Run(() => fitter.FitPlane(points));
             if (!plane.Success)
             { 
-                App.Log("Plane fitting failed. Not enough inliers or points.");
                 IsTouchZoneDefining = false;
-                Changed?.Invoke(this, TouchManagerEventType.CalibrationFailed);
+                OnFailed(Constants.PlaneFittingFailed);
                 return;
             }
             _planeNormal = plane.Normal;
@@ -1349,7 +1351,11 @@ namespace CPRTouchVision.Models
             float denominator = _planeNormal.Length();
 
             if (denominator == 0)
-                throw new ArgumentException("The wall plane normal cannot be a zero vector.");
+            {
+                IsTouchZoneDefining = false;
+                OnFailed(Constants.WallPlaneNormalZero);
+                return;
+            }
 
             float distance = numerator / denominator;
             cameraPosition = new Vector3(distance, 0, 0); // ← Adjust axis if wall is along Z instead of X
@@ -1395,10 +1401,13 @@ namespace CPRTouchVision.Models
                 //App.Log($"Checking if calibrating point back to screen  {pD.Value}");
             }
 
+            App.Log($"Checking all points on wall plane: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
             PlaneChecker.CheckPlane(points, plane);
 
+            App.Log($"Checking all points on alternative wall plane: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
             PlaneChecker.CheckPlane(points, new Plane(planeD.Value.Normal, planeD.Value.D));
 
+            App.Log($"Checking all points on simple wall plane: {planeD2.Normal.X:F4}x + {planeD2.Normal.Y:F4}y + {planeD2.Normal.Z:F4}z + {planeD2.D:F4} = 0");
             PlaneChecker.CheckPlane(points, new Plane(planeD2.Normal, planeD2.D));
 
 #endif
