@@ -384,6 +384,7 @@ namespace CPRTouchVision.Models
         private bool _floorCamera; // camera is mounted on the floor/ceil
 
         private WindowAccumulator? _winAccum = null;
+
         private readonly object _collectLock = new();
         private int _targetFrames = 30;        
         private int _accCapacityPerPixel = 30;
@@ -1326,7 +1327,7 @@ namespace CPRTouchVision.Models
                     var world = _calibration.Convert2DTo3D(
                         new(x, y),
                         d,
-                        CalibrationGeometry.Depth, //CalibrationGeometry.Color,
+                        CalibrationGeometry.Color,
                         CalibrationGeometry.Depth);
 
                     if (world == null)
@@ -1396,7 +1397,11 @@ namespace CPRTouchVision.Models
                 _calibration
             );
 
-            App.Log($"Alternative calculation for plane from depth map: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
+            App.Log($"Calculation for plane in depth space: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
+
+            var planeDC = PlaneChecker.DepthToColor(planeD.Value, _calibration);
+
+            App.Log($"Converted plane in depth space to color space: {planeDC.Normal.X:F4}x + {planeDC.Normal.Y:F4}y + {planeDC.Normal.Z:F4}z + {planeDC.D:F4} = 0");
 
             var planeD2 = PlaneChecker.FitPlaneToPoints(pp);
 
@@ -1407,7 +1412,9 @@ namespace CPRTouchVision.Models
             {              
                 App.Log($"Checking if touchZonePoint point {p.World} on wall = {IsPointOnPlane(p.World, _planeNormal, _planeD)}");
 
-                App.Log($"Checking if touchZonePoint point {p.World} on alternative wall = {IsPointOnPlane(p.World, planeD.Value.Normal, planeD.Value.D)}");
+                App.Log($"Checking if touchZonePoint point {p.World} on depth space wall = {IsPointOnPlane(p.World, planeD.Value.Normal, planeD.Value.D)}");
+
+                App.Log($"Checking if touchZonePoint point {p.World} on color space wall = {IsPointOnPlane(p.World, planeDC.Normal, planeDC.D)}");
 
                 App.Log($"Checking if touchZonePoint point {p.World} on simple wall = {IsPointOnPlane(p.World, planeD2.Normal, planeD2.D)}");
                 //var pD = _calibration.Convert3DTo2D(p.World.ToFloat3(), CalibrationGeometry.Depth, CalibrationGeometry.Color);
@@ -1417,8 +1424,11 @@ namespace CPRTouchVision.Models
             App.Log($"Checking all points on wall plane: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
             PlaneChecker.CheckPlane(points, plane);
 
-            App.Log($"Checking all points on alternative wall plane: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
+            App.Log($"Checking all points on depth space wall plane: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
             PlaneChecker.CheckPlane(points, new Plane(planeD.Value.Normal, planeD.Value.D));
+
+            App.Log($"Checking all points on color space wall plane: {planeDC.Normal.X:F4}x + {planeDC.Normal.Y:F4}y + {planeDC.Normal.Z:F4}z + {planeDC.D:F4} = 0");
+            PlaneChecker.CheckPlane(points, new Plane(planeDC.Normal, planeDC.D));
 
             App.Log($"Checking all points on simple wall plane: {planeD2.Normal.X:F4}x + {planeD2.Normal.Y:F4}y + {planeD2.Normal.Z:F4}z + {planeD2.D:F4} = 0");
             PlaneChecker.CheckPlane(points, new Plane(planeD2.Normal, planeD2.D));
