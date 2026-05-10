@@ -245,6 +245,80 @@ namespace CPRTouchVision.Models
         {
             return ProjectPointOntoPlane(point, plane.Normal, plane.D);
         }
+
+        /// <summary>
+        /// Transforms plane from Depth space to Color space.
+        /// </summary>
+        public static (Vector3 Normal, float D) DepthToColor(
+            Vector3 normal, float d,
+            Calibration calibration)
+            => Transform(normal, d, CalibrationGeometry.Depth, CalibrationGeometry.Color, calibration);
+
+        /// <summary>
+        /// Transforms plane from Color space to Depth space.
+        /// </summary>
+        public static (Vector3 Normal, float D) ColorToDepth(
+            Vector3 normal, float d,
+            Calibration calibration)
+            => Transform(normal, d, CalibrationGeometry.Color, CalibrationGeometry.Depth, calibration);
+
+        /// <summary>
+        /// Core transform — handles any geometry pair.
+        ///
+        /// A plane is defined by (N, D) where dot(N, P) = D for any point P on the plane.
+        ///
+        /// To transform the plane we need:
+        ///   1. Transform the normal (direction — no translation, only rotation)
+        ///   2. Transform a point on the plane (full rigid body — rotation + translation)
+        ///   3. Recompute D = dot(N', P') in the new space
+        ///
+        /// We CANNOT just transform D directly because translation affects D.
+        /// </summary>
+        private static (Vector3 Normal, float D) Transform(
+            Vector3 normal, float d,
+            CalibrationGeometry from,
+            CalibrationGeometry to,
+            Calibration calibration)
+        {
+            // Step 1 — Transform normal as a DIRECTION (no translation)
+            // We do this by transforming two points and taking their difference:
+            //   origin (0,0,0) and tip of normal (nx, ny, nz)
+            // The difference cancels translation, leaving only rotation.
+            var originTransformed = calibration.Convert3DTo3D(
+                new OBSharp.Float3(0,0,0),
+                from, to);
+
+            var tipTransformed = calibration.Convert3DTo3D(
+                normal.ToFloat3(),
+                from, to);
+
+            if (originTransformed == null || tipTransformed == null)
+                throw new InvalidOperationException("Convert3DTo3D failed during plane transform.");
+
+            // Subtract to get pure rotation (translation cancelled)
+            Vector3 transformedNormal = Vector3.Normalize(
+                tipTransformed.ToVector3() - originTransformed.ToVector3());
+
+            // Step 2 — Transform a point ON the plane
+            // Easiest point on plane: origin projected onto plane along normal
+            // P = N * D  (works when N is unit length)
+            Vector3 pointOnPlane = normal * d;
+
+            var transformedPoint = calibration.Convert3DTo3D(
+                pointOnPlane.ToFloat3(),
+                from, to);
+
+            if (transformedPoint == null)
+                throw new InvalidOperationException("Convert3DTo3D failed for point on plane.");
+
+            // Step 3 — Recompute D in new space
+            float transformedD = Vector3.Dot(transformedNormal, transformedPoint.ToVector3());
+
+            return (transformedNormal, transformedD);
+        }
+
+
+
     }
 
 }
