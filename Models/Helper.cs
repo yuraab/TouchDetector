@@ -317,7 +317,154 @@ namespace CPRTouchVision.Models
             return (transformedNormal, transformedD);
         }
 
+        /// <summary>
+        /// Converts color pixel to depth space 3D point via ray-plane intersection.
+        /// Never returns null due to missing depth — uses plane geometry instead.
+        /// </summary>
+        public static Vector3? ConvertColorPointToDepthSpaceViaPlane(
+            int px, int py,
+            Vector3 planeNormalDepthSpace,
+            float planeDDepthSpace,
+            Calibration calibration)
+        {
+            var colorIntrinsics = calibration.ColorCameraCalibration.Intrinsics.Parameters;
 
+            // Step 1 — Transform plane from DEPTH space to COLOR space
+            var (planeNormalColorSpace, planeDColorSpace) = DepthToColor(
+                planeNormalDepthSpace,
+                planeDDepthSpace,
+                calibration);
+
+            // Step 2 — Build color ray (in color space)
+            var rayDir = new Vector3(
+                (px - colorIntrinsics.Cx) / colorIntrinsics.Fx,
+                (py - colorIntrinsics.Cy) / colorIntrinsics.Fy,
+                1.0f);
+
+            // Step 3 — Intersect color ray with plane IN COLOR SPACE
+            float denom = Vector3.Dot(planeNormalColorSpace, rayDir);
+            if (MathF.Abs(denom) < 1e-6f)
+            {
+                App.Log($"Ray at ({px},{py}) is parallel to wall plane.");
+                return null;
+            }
+
+            float t = -planeDColorSpace / denom;
+            if (t <= 0)
+            {
+                App.Log($"Wall plane behind camera for ({px},{py}).");
+                return null;
+            }
+
+            // Step 4 — 3D point in COLOR space
+            Vector3 point3DColorSpace = t * rayDir;
+
+            // Step 5 — Transform to DEPTH space
+            var point3DDepthSpace = calibration.Convert3DTo3D(
+                point3DColorSpace.ToFloat3(),
+                CalibrationGeometry.Color,
+                CalibrationGeometry.Depth);
+
+            return point3DDepthSpace.ToVector3();
+        }
+
+        /// <summary>
+        /// Safely converts color pixel to 3D depth space point.
+        /// Falls back to neighborhood search if pixel depth is missing.
+        /// </summary>
+        public static Vector3? SafeConvertColorPixelToDepthSpace(
+            int px, int py,
+            ushort[] alignedDepthImage,
+            int colorWidth, int colorHeight,
+            Calibration calibration)
+        {
+            ushort depthMm = SampleValidDepth(px, py, alignedDepthImage, colorWidth, colorHeight);
+
+            if (depthMm == 0)
+            {
+                App.Log($"No valid depth found near ({px},{py}) — cannot convert.");
+                return null;
+            }
+
+            // Try Convert2DTo3D with small nudges if it still returns null
+            // (pixel may be at edge of depth FoV)
+            var offsets = new (int dx, int dy)[]
+            {
+                (0,  0),
+                (-2, 0), (2,  0),
+                (0, -2), (0,  2),
+                (-2,-2), (2,  2),
+            };
+
+            foreach (var (dx, dy) in offsets)
+            {
+                int nx = Math.Clamp(px + dx, 0, colorWidth - 1);
+                int ny = Math.Clamp(py + dy, 0, colorHeight - 1);
+
+                ushort d = SampleValidDepth(nx, ny, alignedDepthImage, colorWidth, colorHeight);
+                if (d == 0) continue;
+
+                var point3D = calibration.Convert2DTo3D(
+                    new OBSharp.Float2(nx, ny),
+                    d,
+                    CalibrationGeometry.Color,
+                    CalibrationGeometry.Depth);
+
+                if (point3D == null) continue;
+
+                App.Log($"Color pixel ({px},{py}) → depth 3D via offset ({dx},{dy}): " +
+                        $"X={point3D.Value.X:F1} Y={point3D.Value.Y:F1} Z={point3D.Value.Z:F1}");
+
+                return new Vector3(point3D.Value.X, point3D.Value.Y, point3D.Value.Z);
+            }
+
+            App.Log($"Convert2DTo3D returned null for ({px},{py}) and all neighbors.");
+            return null;
+        }
+
+        /// <summary>
+        /// Gets valid depth for a color pixel — searches growing neighborhood if pixel itself is zero.
+        /// </summary>
+        private static ushort SampleValidDepth(
+            int px, int py,
+            ushort[] alignedDepthImage,
+            int colorWidth, int colorHeight,
+            int maxSearchRadius = 10)
+        {
+            // Try exact pixel first
+            ushort d = alignedDepthImage[py * colorWidth + px];
+            if (d > 0) return d;
+
+            // Search expanding square neighborhood
+            for (int radius = 1; radius <= maxSearchRadius; radius++)
+            {
+                ushort best = 0;
+                int count = 0;
+                float sum = 0;
+
+                for (int dy = -radius; dy <= radius; dy++)
+                    for (int dx = -radius; dx <= radius; dx++)
+                    {
+                        // Only check the border of current radius
+                        if (Math.Abs(dx) != radius && Math.Abs(dy) != radius) continue;
+
+                        int nx = px + dx;
+                        int ny = py + dy;
+                        if (nx < 0 || nx >= colorWidth || ny < 0 || ny >= colorHeight) continue;
+
+                        ushort nd = alignedDepthImage[ny * colorWidth + nx];
+                        if (nd == 0) continue;
+
+                        sum += nd;
+                        count++;
+                    }
+
+                if (count > 0)
+                    return (ushort)(sum / count); // average of valid neighbors
+            }
+
+            return 0; // no valid depth found within radius
+        }
 
     }
 

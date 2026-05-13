@@ -1030,40 +1030,11 @@ namespace CPRTouchVision.Models
             return DepthPoint.Empty;
         }
 
-        OBSharp.Float3 TransformToDepthSpace(OBSharp.Float3 worldPoint, CalibrationExtrinsics extrinsics)
-        {
-            // Invert rotation (transpose for orthonormal matrix)
-            var R = extrinsics.Rotation;
-            var T = extrinsics.Translation;
-
-            // Subtract translation
-            float x = worldPoint.X - T[0];
-            float y = worldPoint.Y - T[1];
-            float z = worldPoint.Z - T[2];
-
-            // Apply transposed rotation
-            float dx = R[0] * x + R[3] * y + R[6] * z;
-            float dy = R[1] * x + R[4] * y + R[7] * z;
-            float dz = R[2] * x + R[5] * y + R[8] * z;
-
-            return new OBSharp.Float3(dx, dy, dz);
-        }
 
         Vector3 Convert2DTo3DPoint(int pointX, int pointY, ushort d)
         {
             var worldPoint1 = _calibration.Convert2DTo3D(new(pointX, pointY), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
-            var x = worldPoint1.Value.X;
-            var y = worldPoint1.Value.Y;
-            var z = worldPoint1.Value.Z;
-            Vector3 pointD = new Vector3(x, y, z);
-#if DEBUG
-            IsPointOnPlane(pointD, _planeNormal, _planeD);
-            var extrinsics = _calibration.GetExtrinsics(CalibrationGeometry.Color, CalibrationGeometry.Depth);
-            var depthSpacePoint = TransformToDepthSpace(new OBSharp.Float3(x, y, z), extrinsics);
-            float recoveredDepth = depthSpacePoint.Z;
-            App.Log($"Converted 2D point ({pointX}, {pointY}) with depth {d} to 3D point {pointD}. Recovered depth in depth space: {recoveredDepth}");
-#endif
-            return pointD;
+            return worldPoint1.HasValue ? worldPoint1.Value.ToVector3() : Vector3.Zero;
         }
         public DepthPoint Convert2DToDepthPoint(int pointX, int pointY)
         {
@@ -1081,7 +1052,7 @@ namespace CPRTouchVision.Models
 #if DEBUG
             App.Log($" Corner point => {p3D}. Depth => {d}");
 #endif
-            return ProjectPointOntoPlane(p3D);
+            return DepthPoint.From(pointX, pointY, p3D.X, p3D.Y, p3D.Z);  //ProjectPointOntoPlane(p3D);
         }
 
         private async Task FinalizeTouchZoneAsync(List<DepthPoint>? points =null) 
@@ -1165,7 +1136,7 @@ namespace CPRTouchVision.Models
             ).ToList();
         }
 
-        private (int, int, int, int) GetCalibrationWindow(List<Vector3> points)
+        private (int, int, int, int) GetCalibrationWindow(List<Vector2> points, int extra = 10)
         {
             int minX = int.MaxValue;
             int minY = int.MaxValue;
@@ -1179,6 +1150,11 @@ namespace CPRTouchVision.Models
                 maxX = Math.Max((int)point.X, maxX);
                 maxY = Math.Max((int)point.Y, maxY);
             }
+
+            minX = Math.Max(minX - extra, 0);
+            minY = Math.Max(minY - extra, 0);
+            maxX = Math.Min(maxX + extra, _fw - 1);
+            maxY = Math.Min(maxY + extra, _fh - 1);
 
             int w = maxX - minX + 1;
             int h = maxY - minY + 1;
@@ -1194,7 +1170,7 @@ namespace CPRTouchVision.Models
 
             int minX, minY, w, h;
             //var calibrationPoints = _calibrationPoints.Select(p => new Vector2(p.X, p.Y)).ToList();
-            (minX, minY, w, h) = GetCalibrationWindow(_touchZonePoints.Select(p => p.World).ToList());
+            (minX, minY, w, h) = GetCalibrationWindow(_touchZonePoints.Select(p => new Vector2(p.World.X, p.World.Y)).ToList());
             Vector3[] result = new Vector3[w * h];
             float minD = float.MaxValue, maxD = 0f;
             lock (_depthLock)
@@ -1274,12 +1250,18 @@ namespace CPRTouchVision.Models
             IsTouchZoneSet = false;
 
             int minX, minY, w, h;
-            var touchZonePoints = _touchZonePoints.Select(p => new Vector3(p.SX, p.SY, 0)).ToList();
+            var touchZone2DPoints = _touchZonePoints.Select(p => new Vector2(p.SX, p.SY)).ToList();
+
+            App.Log("Screen detection window defined");
+            foreach (var p in touchZone2DPoints)
+            {
+                App.Log($"Screen point: X = {p.X} Y = {p.Y}");
+            }
+
+            (minX, minY, w, h) = GetCalibrationWindow(touchZone2DPoints, 0);
+            //minX = 0; minY = 0; w = _fw; h = _fh; // use full frame for plane fitting to be more robust to outliers
             
-            //(minX, minY, w, h) = GetCalibrationWindow(touchZonePoints);
-            minX = 0; minY = 0; w = _fw; h = _fh; // use full frame for plane fitting to be more robust to outliers
-            
-            float minD = float.MaxValue, maxD = 0f;
+            //float minD = float.MaxValue, maxD = 0f;
             _winAccum = new WindowAccumulator(minX, minY, w, h, _fw, _fh, _accCapacityPerPixel);
             IsCollectingFrames = true;
 
@@ -1326,7 +1308,7 @@ namespace CPRTouchVision.Models
                     var world = _calibration.Convert2DTo3D(
                         new(x, y),
                         d,
-                        CalibrationGeometry.Depth, //CalibrationGeometry.Color,
+                        CalibrationGeometry.Color,
                         CalibrationGeometry.Depth);
 
                     if (world == null)
@@ -1358,6 +1340,7 @@ namespace CPRTouchVision.Models
                 return;
             }
             _planeNormal = plane.Normal;
+            //_planeD = plane.D < 0 ? plane.D : -plane.D;
             _planeD = plane.D;
 
             float numerator = MathF.Abs(Vector3.Dot(_planeNormal, Vector3.Zero) + _planeD);
@@ -1373,56 +1356,53 @@ namespace CPRTouchVision.Models
             float distance = numerator / denominator;
             cameraPosition = new Vector3(distance, 0, 0); // ← Adjust axis if wall is along Z instead of X
 
+            Vector3[] touchZoneProjectedPoints = new Vector3[_touchZonePoints.Count];
+
+            // Recalculate touch zone points to be exactly on the plane
+            // to avoid issues with points being off-plane due to noise,
+            // which can cause problems with touch detection later on
+            for (int i=0; i < _touchZonePoints.Count; i++)
+            {
+                var p = _touchZonePoints[i];
+                var projectedPoint = PlaneChecker.ConvertColorPointToDepthSpaceViaPlane(
+                    p.SX, p.SY,
+                    _planeNormal, _planeD,
+                    _calibration);
+                if (projectedPoint != null)
+                {
+                    _touchZonePoints[i] = DepthPoint.From(
+                        p.SX, p.SY, 
+                        projectedPoint.Value.X, projectedPoint.Value.Y, projectedPoint.Value.Z);
+                    App.Log($"Projected touch zone point {p.World} onto plane at {projectedPoint.Value}");
+                }
+                else
+                {
+                    App.Log($"Plane ");
+                    OnFailed($"Failed to project touch zone point {p.ToString()} onto plane.");
+                    return;
+                }
+            }
+
 #if DEBUG || TEST
             App.Log($"Plane fitting done. {plane}");
 
             App.Log($"minX = {minX}, minY = {minY}, w = {w}, h = {h}, _fw = {_fw}, _fh = {_fh}");
             App.Log($"Length winDepth: {winDepth.Length}");
 
-            Vector3[] pp = new Vector3[_touchZonePoints.Count];
-            for (int i = 0; i < _touchZonePoints.Count; i++)
+            foreach (var p in  _touchZonePoints)
             {
-                var p = _touchZonePoints[i];
-                OBSharp.Float2 p2 = new(p.SX, p.SY);
-                int roiIndex = (p.SY - minY) * w + (p.SX - minX);
-                var d = winDepth[roiIndex];
-                var p3 = _calibration.Convert2DTo3D(p2, d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
-                pp[i] = new Vector3(p3.Value.X, p3.Value.Y, p3.Value.Z);
-            }
-
-            var planeD = PlaneChecker.FindPrimaryPlane(
-                winDepth,
-                w, h,
-                _calibration
-            );
-
-            App.Log($"Alternative calculation for plane from depth map: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
-
-            var planeD2 = PlaneChecker.FitPlaneToPoints(pp);
-
-            App.Log($"Simple calculation for plane from depth map: {planeD2.Normal.X:F4}x + {planeD2.Normal.Y:F4}y + {planeD2.Normal.Z:F4}z + {planeD2 .D:F4} = 0");
-
-
-            foreach (var p in _touchZonePoints)
-            {              
                 App.Log($"Checking if touchZonePoint point {p.World} on wall = {IsPointOnPlane(p.World, _planeNormal, _planeD)}");
-
-                App.Log($"Checking if touchZonePoint point {p.World} on alternative wall = {IsPointOnPlane(p.World, planeD.Value.Normal, planeD.Value.D)}");
-
-                App.Log($"Checking if touchZonePoint point {p.World} on simple wall = {IsPointOnPlane(p.World, planeD2.Normal, planeD2.D)}");
-                //var pD = _calibration.Convert3DTo2D(p.World.ToFloat3(), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-                //App.Log($"Checking if calibrating point back to screen  {pD.Value}");
             }
 
             App.Log($"Checking all points on wall plane: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
             PlaneChecker.CheckPlane(points, plane);
-
+            /*
             App.Log($"Checking all points on alternative wall plane: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
             PlaneChecker.CheckPlane(points, new Plane(planeD.Value.Normal, planeD.Value.D));
 
             App.Log($"Checking all points on simple wall plane: {planeD2.Normal.X:F4}x + {planeD2.Normal.Y:F4}y + {planeD2.Normal.Z:F4}z + {planeD2.D:F4} = 0");
             PlaneChecker.CheckPlane(points, new Plane(planeD2.Normal, planeD2.D));
-
+            */
 #endif
             // TODO: - cuts out more then needed, in a real world rock climbing walls setup, needs adjustment
             // _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);

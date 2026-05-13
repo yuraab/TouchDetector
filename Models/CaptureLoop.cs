@@ -90,6 +90,12 @@ namespace CPRTouchVision.Models
                 _device.StartCameras(_config);
                 App.Log("Camera started. Entering loop...");
 
+#if TEST
+                bool isCAlabrationImageSaved = false;
+
+#endif
+
+
                 while (_isRunning)
                 {
 
@@ -123,7 +129,15 @@ namespace CPRTouchVision.Models
                                 {
                                     byte[] managedData = new byte[colorImage.SizeBytes];
                                     System.Runtime.InteropServices.Marshal.Copy(colorImage.Buffer, managedData, 0, managedData.Length);
+#if TEST
+                                    if (!isCAlabrationImageSaved)
+                                    {
+                                        System.IO.File.WriteAllBytes("C:\\Users\\CPR-PC\\CPRTouchVisionLogs\\calibration_frame.bin", managedData);
+                                        App.Log("Calibration frame saved to C:\\Users\\CPR-PC\\CPRTouchVisionLogs\\calibration_frame.bin");
+                                        isCAlabrationImageSaved = true;
+                                    }
 
+#endif
                                     PendingRequest.TrySetResult(new CalibrationFrame
                                     {
                                         ColorData = managedData,

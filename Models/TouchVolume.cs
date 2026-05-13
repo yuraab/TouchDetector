@@ -72,10 +72,10 @@ namespace CPRTouchVision.Models
 
             var intr = calibration.DepthCameraCalibration.Intrinsics.Parameters;
 
-            _cx = intr[0];
-            _cy = intr[1];
-            _fx = intr[2];
-            _fy = intr[3];
+            _cx = intr.Cx;
+            _cy = intr.Cy;
+            _fx = intr.Fx;
+            _fy = intr.Fy;
 
             _wallNormal = Vector3.Normalize(wallNormal);
             _wallDistance = wallDistance;
@@ -345,75 +345,6 @@ namespace CPRTouchVision.Models
 
     }
 
-    public static class TouchZoneHelper
-    {
-        /// <summary>
-        /// Calculates the four corners of a parallelogram on a wall plane, given two diagonal points.
-        /// </summary>
-        /// <param name="wallCorner1">First corner (in screen + world space).</param>
-        /// <param name="wallCorner2">Opposite corner (in screen + world space).</param>
-        /// <param name="wallNormal">Normal vector of the wall plane.</param>
-        /// <param name="calibration">Calibration object to project 3D to 2D.</param>
-        /// <param name="corner1">Output corner 1</param>
-        /// <param name="corner2">Output corner 2</param>
-        /// <param name="corner3">Output corner 3</param>
-        /// <param name="corner4">Output corner 4</param>
-        public static void ComputeAllFourCorners(
-            DepthPoint wallCorner1,
-            DepthPoint wallCorner2,
-            Vector3 wallNormal,
-            Calibration calibration,
-            out DepthPoint corner1,
-            out DepthPoint corner2,
-            out DepthPoint corner3,
-            out DepthPoint corner4)
-        {
-            // Assign corners based on screen X to maintain consistent winding
-            if (wallCorner1.SX < wallCorner2.SX)
-            {
-                corner1 = wallCorner1;
-                corner3 = wallCorner2;
-            }
-            else
-            {
-                corner3 = wallCorner1;
-                corner1 = wallCorner2;
-            }
-
-            Vector3 diag = corner3.World - corner1.World;
-
-            // Arbitrary vector not aligned with the normal
-            Vector3 arbitrary = Math.Abs(wallNormal.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY;
-
-            // Two perpendicular vectors in the plane
-            Vector3 dir1 = Vector3.Normalize(Vector3.Cross(wallNormal, arbitrary));
-            Vector3 dir2 = Vector3.Normalize(Vector3.Cross(wallNormal, dir1));
-
-            // Project the diagonal onto dir1 and dir2 to find the sides
-            float d1 = Vector3.Dot(diag, dir1);
-            float d2 = Vector3.Dot(diag, dir2);
-
-            Vector3 half1 = dir1 * (d1 / 2);
-            Vector3 half2 = dir2 * (d2 / 2);
-            Vector3 center = (corner1.World + corner3.World) / 2;
-
-            // Compute world positions for corner2 and corner4
-            Vector3 c2 = center + half1 - half2;
-            Vector3 c4 = center - half1 + half2;
-
-            // Project corner2
-            var p = calibration.Convert3DTo2D(new(c2.X, c2.Y, c2.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-            int x2 = p.HasValue ? (int)p.Value.X : corner3.SX;
-            int y2 = p.HasValue ? (int)p.Value.Y : corner1.SY;
-            corner2 = DepthPoint.From(x2, y2, c2.X, c2.Y, c2.Z);
-
-            // Project corner4
-            p = calibration.Convert3DTo2D(new(c4.X, c4.Y, c4.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-            int x4 = p.HasValue ? (int)p.Value.X : corner1.SX;
-            int y4 = p.HasValue ? (int)p.Value.Y : corner3.SY;
-            corner4 = DepthPoint.From(x4, y4, c4.X, c4.Y, c4.Z);
-        }
-    }
 
     public class TouchVolume
     {
@@ -448,7 +379,7 @@ namespace CPRTouchVision.Models
         private readonly Calibration _calibration;
         private CalibrationExtrinsics _extrinsics;
         private readonly int _fw, _fh;
-#if DEBUG
+#if DEBUG || TEST
         public int counter = 0;
         private string depthValues = "";
         private int counterG;
@@ -469,7 +400,7 @@ namespace CPRTouchVision.Models
                 WallNotAligned?.Invoke();
 
             //counter = 0;
-
+            App.Log($"Creating TouchVolume with plane normal {planeNormal} and distance {PlaneDistance}. Frame size: {fw}:{fh}");
             Polygon = polygon;
             Polygon2D = new Vector2[4];
             MinOffset = minOffset;
@@ -540,6 +471,7 @@ namespace CPRTouchVision.Models
             UpdateScreenMinMax(Polygon, minOffset);
             UpdateScreenMinMax(Polygon, maxOffset);
 #if DEBUG || TEST
+            App.Log($"Wall plane normal => {WallNormal}, distance => {WallDistance}");
             App.Log($"Filter points should be into => {WallDistance - MinOffset} - {WallDistance - MaxOffset}");
             App.Log($"Filter points into distance => {_maxD} - {_minD}");
             App.Log($"Filter points into X => {_minSX} - {_maxSX}");
@@ -595,8 +527,9 @@ namespace CPRTouchVision.Models
 
         float TransformToDepth(OBSharp.Float3 worldPoint)
         {
-            var depthPoint = TransformToDepthSpace(worldPoint);
-            return depthPoint.Z;
+            //var depthPoint = TransformToDepthSpace(worldPoint);
+            //return depthPoint.Z;
+            return worldPoint.Z;
         }
 
         Vector3 ShiftAlongNormal(Vector3 point, float offset, bool towardCamera)
@@ -631,6 +564,7 @@ namespace CPRTouchVision.Models
                 if (depth < _minD) _minD = (ushort)Math.Floor(depth);
                 if (depth > _maxD) _maxD = (ushort)Math.Ceiling(depth);
             }
+
         }
 
         public bool IsPointInVolume(Vector3 point, out Vector2? point2D)
@@ -668,14 +602,14 @@ namespace CPRTouchVision.Models
                        + WallNormal.Y * point.Y
                        + WallNormal.Z * point.Z
                        + WallDistance;
-#if DEBUG
+#if DEBUG || TEST
             counterG++;
             //depthValues += $"{distanceToPlane.ToString("F3")}; ";
 #endif
             if (distanceToPlane > MaxOffset || distanceToPlane < MinOffset)
                 return false;
 
-#if DEBUG
+#if DEBUG || TEST
             counter++;
 #endif
 
@@ -798,10 +732,11 @@ namespace CPRTouchVision.Models
         {
             var result = new List<OB.Float2>();
             int step = 2;
-#if DEBUG
+#if DEBUG ||TEST
             counter = 0;
             counterG = 0;
             depthValues = "";
+            var maxDepth = 0f;
 #endif
             lock (_depthLock)
             {
@@ -820,13 +755,22 @@ namespace CPRTouchVision.Models
 
                             for (int x = _minSX; x < _maxSX; x += step)
                             {
+#if DEBUG || TEST
+                                counterG++;
+#endif
                                 int index = y * _fw + x;
                                 float d = depthImage[index];
 
-                                if (d <= 0 || d < _minD || d > _maxD) continue;
+#if DEBUG || TEST
+                                if (d > maxDepth) maxDepth = d;
+#endif
+                                //if (d < _minD || d > _maxD) continue;
+                                if (d < _minD) continue;
                                 //if (d <= 0) continue;
-
-                                var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth);
+#if DEBUG || TEST
+                                counter++;
+#endif
+                                var world = _calibration.Convert2DTo3D(new(x, y), d, CalibrationGeometry.Depth, CalibrationGeometry.Depth);
                                 if (world == null) continue;
 
                                 var point2D = new Vector2?();
@@ -839,11 +783,11 @@ namespace CPRTouchVision.Models
                     },
                     localList => { lock (result) result.AddRange(localList); });
             }
-#if DEBUG
-            App.Log($"ExtractProjectedPointsInsideVolumeFromImage counter of points between Offsets: {counter}");
-            App.Log($"ExtractProjectedPointsInsideVolumeFromImage counter of points: {counterG}");
-            App.Log($"ExtractProjectedPointsInsideVolumeFromImage result count: {result.Count}");
-            //App.Log($"ExtractProjectedPointsInsideVolumeFromImage depth values: {depthValues}");
+#if DEBUG || TEST
+            App.Log($"Counter of points between Offsets: {counter}");
+            App.Log($"Counter of points in ROI: {counterG}");
+            App.Log($"Result count: {result.Count}");
+            App.Log($"Max depth value: {maxDepth}");
 #endif
             return result;
         }

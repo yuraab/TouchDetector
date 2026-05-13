@@ -18,7 +18,7 @@
 		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
 		<WindowsSdkPackageVersion>10.0.19041.38</WindowsSdkPackageVersion>
 		<SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
-		<Configurations>Debug;Release;Test</Configurations>
+		<Configurations>Debug;Release;Test;Mock</Configurations>
 		<SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
 		<PublishReadyToRun>False</PublishReadyToRun>
 		<PublishTrimmed>False</PublishTrimmed>
@@ -68,6 +68,22 @@
 		<SelfContained>false</SelfContained>
 		<PublishSingleFile>false</PublishSingleFile>
 	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)'=='Mock'">
+	  <DisableWinUIAppXamlGeneratedMain>true</DisableWinUIAppXamlGeneratedMain>
+	  <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+	  <StartupObject>CPRTouchVision.Startup</StartupObject>
+	  <EnableMsixTooling>false</EnableMsixTooling>
+	  <WindowsPackageType>None</WindowsPackageType>
+	  <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+	  <UseMrtCore>false</UseMrtCore>
+	  <UsePackageManifest>false</UsePackageManifest>
+	  <GeneratePriEnabled>false</GeneratePriEnabled>
+	  <WindowsAppSdkUndockedRegFreeWinRTInitialize>true</WindowsAppSdkUndockedRegFreeWinRTInitialize>
+	  <DisableWinUIAppXamlGeneratedMain>true</DisableWinUIAppXamlGeneratedMain>
+	  <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+	  <SelfContained>false</SelfContained>
+	  <PublishSingleFile>false</PublishSingleFile>
+	</PropertyGroup>
 
 	<!-- ========================= -->
 	<!--   RELEASE SYMBOLS         -->
@@ -110,13 +126,20 @@
 	<!-- ========================= -->
 	<ItemGroup>
 		<Compile Remove="AppWindows\InitWindow.xaml.cs" Condition="'$(Configuration)'=='Test'" />
+		<Compile Condition="'$(Configuration)'=='Mock'" Remove="AppWindows\InitWindow.xaml.cs" />
 		<Page Remove="AppWindows\InitWindow.xaml" Condition="'$(Configuration)'=='Test'" />
+		<Page Condition="'$(Configuration)'=='Mock'" Remove="AppWindows\InitWindow.xaml" />
 		
 	</ItemGroup>
 
 	<ItemGroup Condition="'$(Configuration)'=='Test'">
-		<None Include="$(NuGetPackageRoot)microsoft.windowsappsdk\1.6.240829000\tools\**\*.*"
-			  CopyToOutputDirectory="PreserveNewest" />
+		<None Include="$(NuGetPackageRoot)microsoft.windowsappsdk\1.6.240829000\tools\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<ItemGroup Condition="'$(Configuration)'=='Mock'">
+	  <None Include="$(NuGetPackageRoot)microsoft.windowsappsdk\1.6.240829000\tools\**\*.*">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	</ItemGroup>
 	
 	<!-- ========================= -->
@@ -130,6 +153,14 @@
 		<Content Include="C:\ProgramData\CPR Soft\bin\*.onnx">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
+	</ItemGroup>
+	<ItemGroup Condition="'$(Configuration)'=='Mock'">
+	  <Content Include="C:\ProgramData\CPR Soft\bin\*.dll">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
+	  <Content Include="C:\ProgramData\CPR Soft\bin\*.onnx">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
 	</ItemGroup>
 
 	<!-- Packaged: copy with PackagePath -->
@@ -192,8 +223,7 @@
 	<!--   COPY PROJECTOR OUTPUT   -->
 	<!-- ========================= -->
 	<ItemGroup>
-		<None Include="..\cpr-projector\bin\x64\Release\net9.0-windows\**\*.*"
-			  Exclude="**\System.Management.dll;**\System.CodeDom.dll">
+		<None Include="..\cpr-projector\bin\x64\Release\net9.0-windows\**\*.*" Exclude="**\System.Management.dll;**\System.CodeDom.dll">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
@@ -211,7 +241,6 @@
 	</Target>
 
 	<!-- Dotnet Reactor (optional) -->
-	<Import Project="cpr-touch-vision.dotnet_reactor.targets"
-			Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
+	<Import Project="cpr-touch-vision.dotnet_reactor.targets" Condition="Exists('cpr-touch-vision.dotnet_reactor.targets')" />
 
 </Project>
