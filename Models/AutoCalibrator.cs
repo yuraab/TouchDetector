@@ -583,10 +583,10 @@ namespace CPRTouchVision.Models
             // This correctly maps the colors and flattens the alpha if needed
             Mat finalMat = new Mat();
             Cv2.CvtColor(rgbaMat, finalMat, ColorConversionCodes.RGBA2BGR);
-#if DEBUG
-            string debugPath = Path.Combine(Utilities.GetHomeDirectory(), "debug_frame.png");
+#if DEBUG || TEST
+            string debugPath = Path.Combine(Constants.LOG_FOLDER, "debug_frame.png");
             finalMat.ImWrite(debugPath);
-            Debug.WriteLine($"Saved debug frame to {debugPath}");
+            App.Log($"Saved debug frame to {debugPath}");
 #endif
 
             return GetProjectionZone(finalMat);

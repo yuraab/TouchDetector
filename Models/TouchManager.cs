@@ -1,4 +1,5 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using ABI.System.Numerics;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ComputeSharp;
 #if !DISABLE_XAML_GENERATED_MAIN
@@ -30,6 +31,8 @@ using System.Text;
 using System.Threading.Tasks;
 using WinUIEx.Messaging;
 using OB = OBSharp.Sensor;
+using Vector2 = System.Numerics.Vector2;
+using Vector3 = System.Numerics.Vector3;
 
 
 namespace CPRTouchVision.Models
@@ -308,6 +311,7 @@ namespace CPRTouchVision.Models
         private TouchLoop? _touchLoop;
 
         private ushort[] _depthData = [];
+        private ushort[] _nativeDepthData = [];
 
         private List<DepthPoint> _touchZonePoints = new();
 
@@ -378,6 +382,7 @@ namespace CPRTouchVision.Models
 #endif
         public const int CalibrationPointsCount = 3;
         public const int TouchZonePointsCount = 4;
+        private bool isImageSaved;
         private bool _isReadyReceiveNewCapture = false;
         private ushort _maxWallDepth = 1;
         private ushort _minWallDepth = ushort.MaxValue;
@@ -531,11 +536,13 @@ namespace CPRTouchVision.Models
                 App.Log("Touch loop is already running!!!");
 
             IsRunningTrackTouch = true;
+
             _isReadyReceiveNewCapture = true;
             _detectableSpace.WallNotAligned += OnWallNotAligned;
 
-
-
+#if TEST || MOCK
+            isImageSaved = false;
+#endif
 
         }
 
@@ -650,78 +657,123 @@ namespace CPRTouchVision.Models
         private void OnCaptureReady(object? sender, CaptureLoopEventArgs e)
         {
             var now = DateTime.UtcNow;
+
             if (e.Capture == null || e.Capture.IsDisposed)
                 return;
 
             using var capture = e.Capture;
+
+            //
+            // COLOR
+            //
+
             using var colorImage = capture.ColorImage;
+
             if (colorImage != null)
             {
                 if (!_floorCamera)
                     FlipColor180(colorImage);
-                _colorBitmap.Update((bitmap) =>
+
+                _colorBitmap.Update(bitmap =>
                 {
-                    bitmap.InstallPixels(_colorBitmapInfo, colorImage.Buffer);
+                    bitmap.InstallPixels(
+                        _colorBitmapInfo,
+                        colorImage.Buffer);
                 });
-                if (_calibrationRequest != null && !_calibrationRequest.Task.IsCompleted)
+
+                //
+                // Calibration frame request
+                //
+
+                if (_calibrationRequest != null &&
+                    !_calibrationRequest.Task.IsCompleted)
                 {
                     int totalBytes = colorImage.SizeBytes;
 
-                    //  Create the managed destination array
-                    byte[] managedColorData = new byte[totalBytes];
+                    byte[] managedColorData =
+                        new byte[totalBytes];
 
-                    //  Copy from the raw pointer (nint) to a new array to avoid disposal issues
-                    System.Runtime.InteropServices.Marshal.Copy(colorImage.Buffer, managedColorData, 0, totalBytes);
+                    Marshal.Copy(
+                        colorImage.Buffer,
+                        managedColorData,
+                        0,
+                        totalBytes);
 
-                    var frame = new CalibrationFrame
-                    {
-                        ColorData = managedColorData, 
-                        Width = _fw,
-                        Height = _fh
-                    };
-                    _calibrationRequest.TrySetResult(frame);
-                    _calibrationRequest = null; // Clear request after fulfilling it
+                    _calibrationRequest.TrySetResult(
+                        new CalibrationFrame
+                        {
+                            ColorData = managedColorData,
+                            Width = colorImage.WidthPixels,
+                            Height = colorImage.HeightPixels
+                        });
 
-                    App.Log("Calibration frame captured and sent to detector.");
+                    _calibrationRequest = null;
+
+                    App.Log("Calibration color frame captured.");
                 }
-                    
             }
+
+            //
+            // NATIVE DEPTH
+            //
 
             using var depthImage = capture.DepthImage;
 
-            if (depthImage != null)
+            if (depthImage == null)
+                return;
+
+            if (!_floorCamera)
+                FlipDepth180(depthImage);
+
+            //
+            // MAIN PIPELINE USES NATIVE DEPTH
+            //
+
+            _nativeDepthData.CopyFrom(depthImage);
+
+            //
+            // Optional visualization
+            //
+
+            _depthBitmap.Update(bitmap =>
             {
-                using var aligned = new OB.Image(OB.ImageFormat.Depth16, _fw, _fh);
-                _transformation?.DepthImageToColorCamera(depthImage, aligned);
+                bitmap.Pixels =
+                    _depthVisualizer.Update(_nativeDepthData);
+            });
 
-                if (!_floorCamera)
-                    FlipDepth180(aligned); // in-place flip
+            //
+            // Calibration accumulation
+            //
 
-                _depthData.CopyFrom(aligned);
+            if (IsCollectingFrames)
+            {
+                WindowAccumulator? acc;
 
-                _depthBitmap.Update(bitmap =>
-                {
-                    bitmap.Pixels = _depthVisualizer.Update(_depthData);
-                });
+                lock (_collectLock)
+                    acc = _winAccum;
 
-                if (IsCollectingFrames)
-                {
-                    WindowAccumulator? acc = null;
-                    lock (_collectLock) acc = _winAccum;
-                    if (acc != null)
-                    {
-                        acc.AddFrame(_depthData);
-                    }
-                }
-
-                if (_isReadyReceiveNewCapture && _touchLoop != null)
-                {
-                    _ = _touchLoop.TrySendImage(_depthData, _fw, _fh, now);
-                }
+                acc?.AddFrame(_nativeDepthData);
             }
-            Changed?.Invoke(this, TouchManagerEventType.NewFrame);
 
+            //
+            // Runtime touch processing
+            //
+
+            if (_isReadyReceiveNewCapture &&
+                _touchLoop != null)
+            {
+                _ = _touchLoop.TrySendImage(
+                    _nativeDepthData,
+                    depthImage.WidthPixels,
+                    depthImage.HeightPixels,
+                    now);
+            }
+
+            Changed?.Invoke(
+                this,
+                TouchManagerEventType.NewFrame);
         }
+
 
         // Unsafe helper for color flip (4 bytes per pixel assumed, RGBA)
         private unsafe void FlipColor180(OB.Image colorImage)
@@ -1241,6 +1293,7 @@ namespace CPRTouchVision.Models
 #endif
         }
 
+
         private async Task WallPlaneStat()
         {
             if (IsTouchZoneDefining)
@@ -1249,169 +1302,246 @@ namespace CPRTouchVision.Models
             IsTouchZoneDefining = true;
             IsTouchZoneSet = false;
 
-            int minX, minY, w, h;
-            var touchZone2DPoints = _touchZonePoints.Select(p => new Vector2(p.SX, p.SY)).ToList();
+            InfoMessage =
+                Constants.CollectingFramesForPlaneFitting;
 
-            App.Log("Screen detection window defined");
-            foreach (var p in touchZone2DPoints)
-            {
-                App.Log($"Screen point: X = {p.X} Y = {p.Y}");
-            }
+            //
+            // STEP 1
+            // Build APPROXIMATE calibration ROI
+            // from color-space polygon
+            //
 
-            (minX, minY, w, h) = GetCalibrationWindow(touchZone2DPoints, 0);
-            //minX = 0; minY = 0; w = _fw; h = _fh; // use full frame for plane fitting to be more robust to outliers
+            var touchZonePoints =
+                _touchZonePoints
+                    .Select(p => new Vector2(p.SX, p.SY))
+                    .ToList();
+
+            //
+            // Approximate ROI bootstrap
+            // using color-space bounds
+            //
+
+            int minX = (int)touchZonePoints.Min(p => p.X);
+            int minY = (int)touchZonePoints.Min(p => p.Y);
+
+            int maxX = (int)touchZonePoints.Max(p => p.X);
+            int maxY = (int)touchZonePoints.Max(p => p.Y);
+
+            int w = maxX - minX + 1;
+            int h = maxY - minY + 1;
+
+            //
+            // IMPORTANT:
+            // During bootstrap we still use full-frame
+            // native depth accumulation.
+            //
             
-            //float minD = float.MaxValue, maxD = 0f;
-            _winAccum = new WindowAccumulator(minX, minY, w, h, _fw, _fh, _accCapacityPerPixel);
+            _depthWidth = _captureLoop.GetDepthResolution().width;
+            _depthHeight = _captureLoop.GetDepthResolution().height;
+
+            _winAccum = new WindowAccumulator(
+                0,
+                0,
+                _depthWidth,
+                _depthHeight,
+                _depthWidth,
+                _depthHeight,
+                _accCapacityPerPixel);
+
             IsCollectingFrames = true;
 
-            InfoMessage = Constants.CollectingFramesForPlaneFitting;
+            //
+            // Wait accumulation
+            //
 
             await Task.Run(async () =>
             {
-                // safeguard
                 var sw = Stopwatch.StartNew();
+
                 while (true)
                 {
                     WindowAccumulator? acc;
-                    lock (_collectLock) acc = _winAccum;
-                    if (acc != null && acc.FramesCollected >= _targetFrames) break;
-                    if (sw.ElapsedMilliseconds > 4000) break; // time out ro avoid stuck
+
+                    lock (_collectLock)
+                        acc = _winAccum;
+
+                    if (acc != null &&
+                        acc.FramesCollected >= _targetFrames)
+                        break;
+
+                    if (sw.ElapsedMilliseconds > 5000)
+                        break;
+
                     await Task.Delay(5);
                 }
             });
 
-            ushort[] winDepth = new ushort[w * h];
+            //
+            // Stop accumulation
+            //
+
             WindowAccumulator? ready;
-            lock (_collectLock) { ready = _winAccum; _winAccum = null; IsCollectingFrames = false; }
-            if (ready == null) return;
 
-            ready.BuildDepthMap(winDepth, useMedian: true);
-
-            var pointsC = new ConcurrentBag<Vector3>();
-
-            Parallel.For(0, h, y =>
+            lock (_collectLock)
             {
-            int row = y * w;
+                ready = _winAccum;
+                _winAccum = null;
+                IsCollectingFrames = false;
+            }
 
-                for (int x = 0; x < w; x++)
+            if (ready == null)
+            {
+                IsTouchZoneDefining = false;
+                return;
+            }
+
+            //
+            // Build stabilized native depth map
+            //
+
+            ushort[] stableDepth =
+                new ushort[
+                    _depthWidth * _depthHeight];
+
+            ready.BuildDepthMap(
+                stableDepth,
+                useMedian: true);
+
+            InfoMessage = Constants.FittingPlane;
+
+            //
+            // STEP 2
+            // Native depth-space point cloud
+            //
+
+            var points =
+                new ConcurrentBag<Vector3>();
+
+            Parallel.For(0, _depthHeight, y =>
+            {
+                int row = y * _depthWidth;
+
+                for (int x = 0; x < _depthWidth; x += 2)
                 {
                     int i = row + x;
 
-                    ushort d = winDepth[i];
-                    if (d == 0)
+                    ushort d = stableDepth[i];
+
+                    if (d < 300 || d > 8000)
                         continue;
 
-                    int fx = minX + x;
-                    int fy = minY + y;
-
-                    var world = _calibration.Convert2DTo3D(
-                        new(x, y),
-                        d,
-                        CalibrationGeometry.Color,
-                        CalibrationGeometry.Depth);
+                    var world =
+                        _calibration.Convert2DTo3D(
+                            new(x, y),
+                            d,
+                            CalibrationGeometry.Depth,
+                            CalibrationGeometry.Depth);
 
                     if (world == null)
-                        return;
+                        continue;
 
-                    pointsC.Add(new Vector3(
+                    points.Add(new Vector3(
                         world.Value.X,
                         world.Value.Y,
                         world.Value.Z));
                 }
             });
 
-            //float planeD;
-            //Vector3 planeNormal;
-            Vector3 cameraPosition;
+            var pointList =
+                points.ToList();
 
-            //(planeD, planeNormal) = await Task.Run(() => FitPlaneSVD2(points.ToArray()));
+            //
+            // STEP 3
+            // Fit wall plane IN NATIVE DEPTH SPACE
+            //
 
-            InfoMessage = Constants.FittingPlane;
+            var fitter =
+                new RANSACPlaneFitter(
+                    iterations: 1000,
+                    threshold: 10);
 
-            var points = pointsC.Where(p => !p.IsZero()).ToList();
+            PlaneResult plane =
+                await Task.Run(() =>
+                    fitter.FitPlane(pointList));
 
-            var fitter = new RANSACPlaneFitter(iterations: 1000, threshold: 10);
-            PlaneResult plane = await Task.Run(() => fitter.FitPlane(points));
             if (!plane.Success)
-            { 
+            {
                 IsTouchZoneDefining = false;
-                OnFailed(Constants.PlaneFittingFailed);
+
+                OnFailed(
+                    Constants.PlaneFittingFailed);
+
                 return;
             }
+
+            //
+            // Ensure normal faces camera
+            //
+
+            if (plane.Normal.Z < 0)
+            {
+                plane.Normal = -plane.Normal;
+                plane.D = -plane.D;
+            }
+
             _planeNormal = plane.Normal;
-            //_planeD = plane.D < 0 ? plane.D : -plane.D;
             _planeD = plane.D;
 
-            float numerator = MathF.Abs(Vector3.Dot(_planeNormal, Vector3.Zero) + _planeD);
-            float denominator = _planeNormal.Length();
+            App.Log(
+                $"Depth-space plane: " +
+                $"{plane.Normal.X:F4}x + " +
+                $"{plane.Normal.Y:F4}y + " +
+                $"{plane.Normal.Z:F4}z + " +
+                $"{plane.D:F4} = 0");
 
-            if (denominator == 0)
+            //
+            // STEP 4
+            // NOW accurately convert Color ROI
+            // → native depth ROI
+            //
+
+            var _depthSpaceTouchZone =
+                _touchZonePoints
+                    .Select(p =>
+                        PlaneChecker
+                            .ConvertColorPointToDepthSpaceViaPlane(
+                                p.SX,
+                                p.SY,
+                                _planeNormal,
+                                _planeD,
+                                _calibration))
+                    .Where(p => p != null)
+                    .Select(p => p.Value)
+                    .ToList();
+
+#if DEBUG || TEST || MOCK
+
+            var filePath = Path.Combine(Constants.LOG_FOLDER, "stableDepth.bin");
+            App.Log("Depth-space points are saved to: " + filePath);
+
+
+            App.Log("Depth-space touch zone points:");
+            Utilities.SaveCapturedFrame(stableDepth, filePath);    
+            foreach (var p in _depthSpaceTouchZone)
             {
-                IsTouchZoneDefining = false;
-                OnFailed(Constants.WallPlaneNormalZero);
-                return;
+                App.Log($"Depth-space point: {p}");
+                App.Log($"Checking if this point on wall = {IsPointOnPlane(p, _planeNormal, _planeD)}");
+
             }
-
-            float distance = numerator / denominator;
-            cameraPosition = new Vector3(distance, 0, 0); // ← Adjust axis if wall is along Z instead of X
-
-            Vector3[] touchZoneProjectedPoints = new Vector3[_touchZonePoints.Count];
-
-            // Recalculate touch zone points to be exactly on the plane
-            // to avoid issues with points being off-plane due to noise,
-            // which can cause problems with touch detection later on
-            for (int i=0; i < _touchZonePoints.Count; i++)
-            {
-                var p = _touchZonePoints[i];
-                var projectedPoint = PlaneChecker.ConvertColorPointToDepthSpaceViaPlane(
-                    p.SX, p.SY,
-                    _planeNormal, _planeD,
-                    _calibration);
-                if (projectedPoint != null)
-                {
-                    _touchZonePoints[i] = DepthPoint.From(
-                        p.SX, p.SY, 
-                        projectedPoint.Value.X, projectedPoint.Value.Y, projectedPoint.Value.Z);
-                    App.Log($"Projected touch zone point {p.World} onto plane at {projectedPoint.Value}");
-                }
-                else
-                {
-                    App.Log($"Plane ");
-                    OnFailed($"Failed to project touch zone point {p.ToString()} onto plane.");
-                    return;
-                }
-            }
-
-#if DEBUG || TEST
-            App.Log($"Plane fitting done. {plane}");
-
-            App.Log($"minX = {minX}, minY = {minY}, w = {w}, h = {h}, _fw = {_fw}, _fh = {_fh}");
-            App.Log($"Length winDepth: {winDepth.Length}");
-
-            foreach (var p in  _touchZonePoints)
-            {
-                App.Log($"Checking if touchZonePoint point {p.World} on wall = {IsPointOnPlane(p.World, _planeNormal, _planeD)}");
-            }
-
-            App.Log($"Checking all points on wall plane: {_planeNormal.X:F4}x + {_planeNormal.Y:F4}y + {_planeNormal.Z:F4}z + {_planeD:F4} = 0");
-            PlaneChecker.CheckPlane(points, plane);
-            /*
-            App.Log($"Checking all points on alternative wall plane: {planeD.Value.Normal.X:F4}x + {planeD.Value.Normal.Y:F4}y + {planeD.Value.Normal.Z:F4}z + {planeD.Value.D:F4} = 0");
-            PlaneChecker.CheckPlane(points, new Plane(planeD.Value.Normal, planeD.Value.D));
-
-            App.Log($"Checking all points on simple wall plane: {planeD2.Normal.X:F4}x + {planeD2.Normal.Y:F4}y + {planeD2.Normal.Z:F4}z + {planeD2.D:F4} = 0");
-            PlaneChecker.CheckPlane(points, new Plane(planeD2.Normal, planeD2.D));
-            */
 #endif
-            // TODO: - cuts out more then needed, in a real world rock climbing walls setup, needs adjustment
-            // _exclusionZones = DetectLedges(plane.Outliers, _planeNormal, _planeD);
+            //
+            // DONE
+            //
 
-            //await SaveConfig(); 
-            IsTouchZoneDefining = false;
             IsWallPlaneSet = true;
             IsTouchZoneSet = true;
+            IsTouchZoneDefining = false;
+
+            InfoMessage =
+                Constants.WallPlaneDetected;
         }
+
+
 
         private List<ExclusionZone>? DetectLedges(
             List<Vector3> points, 
@@ -1762,6 +1892,9 @@ namespace CPRTouchVision.Models
 
         [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_SUB_FOLDER = "CPR Touch Vision";
+        private int _depthWidth;
+        private int _depthHeight;
+
         public static string CONFIG_FOLDER => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
         [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_PATH => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER, "config.json");

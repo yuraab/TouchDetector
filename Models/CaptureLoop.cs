@@ -1,6 +1,8 @@
 ﻿using OBSharp.Sensor;
 using System;
 using System.Diagnostics;
+using System.Drawing.Drawing2D;
+using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +27,7 @@ namespace CPRTouchVision.Models
         private Vector3 _accelSum;
         private int _sampleCount = 0;
         private object _lock;
+        private bool isCalibrationImageSaved = false;
 
         public event EventHandler<CaptureLoopEventArgs>? CaptureReady;
         public event EventHandler<LoopFailedEventArgs>? LoopFailed;
@@ -68,6 +71,9 @@ namespace CPRTouchVision.Models
             App.Log($"Depth Mode: Width = {_config.DepthMode.WidthPixels()};  Height = {_config.DepthMode.HeightPixels()}");
             App.Log($"Color Mode: Width = {_config.ColorResolution.WidthPixels()};  Height = {_config.ColorResolution.HeightPixels()}");
         }
+
+        public (int width, int height) GetColorResolution() => (_config.ColorResolution.WidthPixels(), _config.ColorResolution.HeightPixels());
+        public (int width, int height) GetDepthResolution() => (_config.DepthMode.WidthPixels(), _config.DepthMode.HeightPixels());
 
         public void Run()
         {
@@ -129,15 +135,18 @@ namespace CPRTouchVision.Models
                                 {
                                     byte[] managedData = new byte[colorImage.SizeBytes];
                                     System.Runtime.InteropServices.Marshal.Copy(colorImage.Buffer, managedData, 0, managedData.Length);
+
 #if TEST
-                                    if (!isCAlabrationImageSaved)
+                                    if (!isCalibrationImageSaved)
                                     {
-                                        System.IO.File.WriteAllBytes("C:\\Users\\CPR-PC\\CPRTouchVisionLogs\\calibration_frame.bin", managedData);
-                                        App.Log("Calibration frame saved to C:\\Users\\CPR-PC\\CPRTouchVisionLogs\\calibration_frame.bin");
-                                        isCAlabrationImageSaved = true;
+                                        var filePath = Path.Combine(Constants.LOG_FOLDER, "calibration_frame.bin");
+                                        System.IO.File.WriteAllBytes(filePath, managedData);
+                                        App.Log("Calibration frame saved to " + filePath);
+                                        isCalibrationImageSaved = true;
                                     }
 
 #endif
+
                                     PendingRequest.TrySetResult(new CalibrationFrame
                                     {
                                         ColorData = managedData,

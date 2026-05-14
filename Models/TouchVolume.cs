@@ -838,5 +838,474 @@ namespace CPRTouchVision.Models
         */
     }
 
+    /// <summary>
+    /// Native depth-space LUT touch volume.
+    ///
+    /// For every depth pixel ray:
+    /// precomputes [DMin,DMax] in millimeters
+    /// where the ray intersects the touch slab volume.
+    ///
+    /// Runtime:
+    ///     ushort depth compare only.
+    ///
+    /// Plane convention:
+    ///     dot(N,P) + D = 0
+    ///
+    /// Units:
+    ///     millimeters everywhere.
+    /// </summary>
+    public sealed class LutTouchVolume
+    {
+        //
+        // Intrinsics
+        //
+
+        private readonly float _fx;
+        private readonly float _fy;
+        private readonly float _cx;
+        private readonly float _cy;
+
+        //
+        // Frame size
+        //
+
+        private readonly int _fw;
+        private readonly int _fh;
+
+        //
+        // Plane
+        // dot(N,P)+D=0
+        //
+
+        private readonly Vector3 _wallNormal;
+        private readonly float _wallD;
+
+        public Plane WallPlane =>
+            new(_wallNormal, _wallD);
+
+        //
+        // Offsets toward camera
+        // in millimeters
+        //
+
+        private readonly float _minOffset;
+        private readonly float _maxOffset;
+
+        //
+        // Quad corners ON WALL
+        // in native depth space
+        //
+
+        private readonly Vector3[] _quadCorners;
+
+        //
+        // Convex volume planes
+        //
+
+        private readonly VolumePlane[] _planes;
+
+        //
+        // LUT
+        //
+
+        private readonly DepthRange?[] _lut;
+
+        //
+        // Tight bounds
+        //
+
+        private int _minX;
+        private int _maxX;
+        private int _minY;
+        private int _maxY;
+
+        //
+        // Ready
+        //
+
+        public bool IsReady { get; private set; }
+
+        //
+        // Structs
+        //
+
+        private readonly struct VolumePlane
+        {
+            public readonly Vector3 Normal;
+            public readonly float D;
+
+            public VolumePlane(
+                Vector3 normal,
+                float d)
+            {
+                Normal = normal;
+                D = d;
+            }
+        }
+
+        private readonly struct DepthRange
+        {
+            public readonly ushort Min;
+            public readonly ushort Max;
+
+            public DepthRange(
+                ushort min,
+                ushort max)
+            {
+                Min = min;
+                Max = max;
+            }
+        }
+
+        //
+        // Constructor
+        //
+
+        private LutTouchVolume(
+            Vector3 wallNormal,
+            float wallD,
+            float minOffset,
+            float maxOffset,
+            Vector3[] quadCorners,
+            int fw,
+            int fh,
+            Calibration calibration)
+        {
+            _fw = fw;
+            _fh = fh;
+
+            var intr =
+                calibration
+                    .DepthCameraCalibration
+                    .Intrinsics
+                    .Parameters;
+
+            _cx = intr.Cx;
+            _cy = intr.Cy;
+            _fx = intr.Fx;
+            _fy = intr.Fy;
+
+            _wallNormal = Vector3.Normalize(wallNormal);
+
+            _wallD = wallD;
+
+            _minOffset = minOffset;
+            _maxOffset = maxOffset;
+
+            _quadCorners = quadCorners;
+
+            _planes = BuildBoundingPlanes();
+
+            _lut = new DepthRange?[fw * fh];
+        }
+
+        //
+        // Factory
+        //
+
+        public static async Task<LutTouchVolume>
+            CreateAsync(
+                Vector3 wallNormal,
+                float wallD,
+                float minOffset,
+                float maxOffset,
+                Vector3[] quadCorners,
+                int fw,
+                int fh,
+                Calibration calibration,
+                IProgress<string>? progress = null)
+        {
+            var v = new LutTouchVolume(
+                wallNormal,
+                wallD,
+                minOffset,
+                maxOffset,
+                quadCorners,
+                fw,
+                fh,
+                calibration);
+
+            await Task.Run(() =>
+            {
+                progress?.Report("Building LUT...");
+                v.BuildLut();
+
+                progress?.Report("Computing bounds...");
+                (
+                    v._minX,
+                    v._maxX,
+                    v._minY,
+                    v._maxY
+                ) = v.ComputeBounds();
+
+                v.IsReady = true;
+            });
+
+            return v;
+        }
+
+        //
+        // Build planes
+        //
+
+        private VolumePlane[] BuildBoundingPlanes()
+        {
+            var planes =
+                new VolumePlane[6];
+
+            //
+            // Far face
+            //
+
+            Vector3 farPoint =
+                _quadCorners[0]
+                + _wallNormal * _minOffset;
+
+            planes[0] =
+                new VolumePlane(
+                    _wallNormal,
+                    -Vector3.Dot(
+                        _wallNormal,
+                        farPoint));
+
+            //
+            // Near face
+            //
+
+            Vector3 nearPoint =
+                _quadCorners[0]
+                + _wallNormal * _maxOffset;
+
+            planes[1] =
+                new VolumePlane(
+                    -_wallNormal,
+                    -Vector3.Dot(
+                        -_wallNormal,
+                        nearPoint));
+
+            //
+            // Side planes
+            //
+
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 A =
+                    _quadCorners[i];
+
+                Vector3 B =
+                    _quadCorners[
+                        (i + 1) % 4];
+
+                Vector3 edge =
+                    B - A;
+
+                Vector3 sideNormal =
+                    Vector3.Normalize(
+                        Vector3.Cross(
+                            edge,
+                            _wallNormal));
+
+                Vector3 opposite =
+                    _quadCorners[
+                        (i + 2) % 4];
+
+                if (Vector3.Dot(
+                        sideNormal,
+                        opposite - A) < 0)
+                {
+                    sideNormal =
+                        -sideNormal;
+                }
+
+                float d =
+                    -Vector3.Dot(
+                        sideNormal,
+                        A);
+
+                planes[2 + i] =
+                    new VolumePlane(
+                        sideNormal,
+                        d);
+            }
+
+            return planes;
+        }
+
+        //
+        // Ray/slab intersection
+        //
+
+        private bool ComputeDepthRange(
+            int x,
+            int y,
+            out ushort dmin,
+            out ushort dmax)
+        {
+            dmin = 0;
+            dmax = ushort.MaxValue;
+
+            //
+            // IMPORTANT:
+            // z=t in millimeters
+            //
+
+            Vector3 rayDir =
+                new(
+                    (x - _cx) / _fx,
+                    (y - _cy) / _fy,
+                    1.0f);
+
+            float tNear = 0;
+            float tFar = 10000;
+
+            foreach (var p in _planes)
+            {
+                float denom =
+                    Vector3.Dot(
+                        p.Normal,
+                        rayDir);
+
+                //
+                // dot(N,P)+D>=0
+                //
+
+                float numer = -p.D;
+
+                if (MathF.Abs(denom) < 1e-6f)
+                {
+                    //
+                    // Parallel
+                    //
+
+                    if (numer < 0)
+                        return false;
+
+                    continue;
+                }
+
+                float t = numer / denom;
+
+                if (denom > 0)
+                    tNear = MathF.Max(tNear, t);
+                else
+                    tFar =
+                        MathF.Min(tFar, t);
+
+                if (tNear > tFar)
+                    return false;
+            }
+
+            if (tFar <= 0)
+                return false;
+
+            dmin = (ushort)MathF.Max(0, MathF.Round(tNear));
+
+            dmax = (ushort)MathF.Round(tFar);
+
+            return dmax > dmin;
+        }
+
+        //
+        // Build LUT
+        //
+
+        private void BuildLut()
+        {
+            Parallel.For(0, _fh, y =>
+                {
+                    int row = y * _fw;
+
+                    for (int x = 0; x < _fw; x++)
+                    {
+                        if (ComputeDepthRange(
+                                x, y,
+                                out ushort dmin,
+                                out ushort dmax))
+                        {
+                            _lut[row + x] =
+                                new DepthRange(dmin, dmax);
+                        }
+                    }
+                });
+        }
+
+        //
+        // Compute tight bounds
+        //
+
+        private (int MinX, int MaxX, int MinY, int MaxY) ComputeBounds()
+        {
+            int minX = int.MaxValue;
+            int maxX = int.MinValue;
+
+            int minY = int.MaxValue;
+            int maxY = int.MinValue;
+
+            for (int y = 0; y < _fh; y++)
+            {
+                int row = y * _fw;
+
+                for (int x = 0; x < _fw; x++)
+                {
+                    if (_lut[row + x] == null)
+                        continue;
+
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+
+            return (
+                minX == int.MaxValue ? 0 : minX,
+                maxX == int.MinValue ? _fw - 1 : maxX,
+                minY == int.MaxValue ? 0 : minY,
+                maxY == int.MinValue ? _fh - 1 : maxY
+            );
+        }
+
+        //
+        // Runtime
+        //
+
+        public List<(int X, int Y)>ExtractPixels(ushort[] depthImage)
+        {
+            var result =
+                new List<(int X, int Y)>();
+
+            for (int y = _minY; y <= _maxY; y++)
+            {
+                int row = y * _fw;
+
+                for (int x = _minX; x <= _maxX; x++)
+                {
+                    var range =
+                        _lut[row + x];
+
+                    if (range == null)
+                        continue;
+
+                    ushort d =
+                        depthImage[row + x];
+
+                    if (d == 0)
+                        continue;
+
+                    if (d >= range.Value.Min &&
+                        d <= range.Value.Max)
+                    {
+                        result.Add((x, y));
+                    }
+                }
+            }
+
+            return result;
+        }
+    }
+
+
+
 }
 

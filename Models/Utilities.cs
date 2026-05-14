@@ -37,9 +37,11 @@ namespace CPRTouchVision.Models
         public const string ZoneDetectionFailed = "Failed to detect touch zone.";
         public const string CollectingFramesForPlaneFitting = "Collecting frames for plane fitting... Please wait and do not move.";
         public const string FittingPlane = "Fitting plane... Please wait.";
+        public const string WallPlaneDetected = "Wall plane detected.";
 
         [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_SUB_FOLDER = "CPR Touch Vision";
+        public const string LOG_FOLDER = "C:\\Users\\CPR-PC\\CPRTouchVisionLogs";
         public static string CONFIG_FOLDER => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
         [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_PATH => System.IO.Path.Combine(CONFIG_FOLDER, "config.json");
@@ -81,7 +83,16 @@ namespace CPRTouchVision.Models
 #endif
         }
 
-        
+        public static void SaveCapturedFrame(ushort[] frameData, string filePath)
+        {
+            // ushort is 2 bytes, so multiply length by 2
+            byte[] byteArray = new byte[frameData.Length * 2];
+            Buffer.BlockCopy(frameData, 0, byteArray, 0, byteArray.Length);
+
+            // Write all bytes to disk instantly
+            File.WriteAllBytes(filePath, byteArray);
+        }
+
     }
 
     public interface ICalibrationProgress
