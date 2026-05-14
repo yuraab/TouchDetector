@@ -489,6 +489,11 @@ namespace CPRTouchVision.Models
             
             _transformation = new Transformation(_calibration);
 
+            _depthWidth = _captureLoop.GetDepthResolution().width;
+            _depthHeight = _captureLoop.GetDepthResolution().height;
+
+            _dep
+
             _captureLoop.Run();
             await StartTouchLoop();
             IsRunning = true;
@@ -728,6 +733,15 @@ namespace CPRTouchVision.Models
             //
             // MAIN PIPELINE USES NATIVE DEPTH
             //
+            int required =
+                depthImage.WidthPixels *
+                depthImage.HeightPixels;
+
+            if (_nativeDepthData.Length != required)
+            {
+                _nativeDepthData =
+                    new ushort[required];
+            }
 
             _nativeDepthData.CopyFrom(depthImage);
 
@@ -1336,8 +1350,6 @@ namespace CPRTouchVision.Models
             // native depth accumulation.
             //
             
-            _depthWidth = _captureLoop.GetDepthResolution().width;
-            _depthHeight = _captureLoop.GetDepthResolution().height;
 
             _winAccum = new WindowAccumulator(
                 0,
@@ -1423,6 +1435,7 @@ namespace CPRTouchVision.Models
 
                 for (int x = 0; x < _depthWidth; x += 2)
                 {
+                    int i = row + x;
                     int i = row + x;
 
                     ushort d = stableDepth[i];

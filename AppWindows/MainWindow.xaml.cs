@@ -277,7 +277,7 @@ namespace CPRTouchVision
                 return;
 
             _manager.ColorBitmap.Draw(canvas, true);
-            _manager.DepthBitmap.Draw(canvas);
+            //_manager.DepthBitmap.Draw(canvas);
 
             if (_manager.IsTouchZoneSet)
             {

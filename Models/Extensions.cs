@@ -50,7 +50,8 @@ namespace CPRTouchVision.Models
         public static void CopyFrom(this ushort[] buffer, OB.Image image)
         {
             if (buffer.Length * sizeof(ushort) != image.SizeBytes)
-                throw new ArgumentException("Image buffer size is not matching destination buffer size.");
+                throw new ArgumentException(
+                    $"Image buffer size {image.SizeBytes} is not matching destination buffer size {buffer.Length * sizeof(ushort)}.");
 
             unsafe
             {
