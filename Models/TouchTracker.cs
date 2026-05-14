@@ -10,7 +10,7 @@ namespace CPRTouchVision.Models
 {
     public sealed class TouchTracker_ : IDisposable
     {
-        private readonly TouchVolume _volume;
+        private readonly ITouchVolume _volume;
         private readonly Touch2DClusterManager _clusterManager;
         private readonly ExclusionZoneManager_? _exclusionManager;
 
@@ -28,7 +28,7 @@ namespace CPRTouchVision.Models
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
         public TouchTracker_(
-            TouchVolume volume, 
+            ITouchVolume volume, 
             Calibration calibration,
             List<ExclusionZone> exclusionZones = null,
             int maxQueueSize = 5)

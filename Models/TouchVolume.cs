@@ -1,4 +1,6 @@
 ﻿using ABI.System.Numerics;
+using CPRTouchVision.Models;
+using Dbscan;
 using OBSharp;
 using OBSharp.Sensor;
 using OpenCvSharp;
@@ -345,8 +347,14 @@ namespace CPRTouchVision.Models
 
     }
 
+    public interface ITouchVolume
+    {
+        Vector2 GetHomographyCoordinatesFrom2D(Vector2 center);
+        Vector3 Get3DPointFromLocal2DPoint(Vector2 center);
+        List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage);
+    }
 
-    public class TouchVolume
+    public class TouchVolume: ITouchVolume
     {
         public DepthPoint[] Polygon { get; private set; } // Always 4 points in world space
 
@@ -854,7 +862,7 @@ namespace CPRTouchVision.Models
     /// Units:
     ///     millimeters everywhere.
     /// </summary>
-    public sealed class LutTouchVolume
+    public sealed class LutTouchVolume : ITouchVolume
     {
         //
         // Intrinsics
@@ -1299,6 +1307,29 @@ namespace CPRTouchVision.Models
                         result.Add((x, y));
                     }
                 }
+            }
+
+            return result;
+        }
+
+        Vector2 ITouchVolume.GetHomographyCoordinatesFrom2D(Vector2 center)
+        {
+            throw new NotImplementedException();
+        }
+
+        Vector3 ITouchVolume.Get3DPointFromLocal2DPoint(Vector2 center)
+        {
+            throw new NotImplementedException();
+        }
+
+        List<Float2> ITouchVolume.ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage)
+        {
+            var pixels = ExtractPixels(depthImage);
+            var result = new List<Float2>();
+
+            foreach (var (x, y) in pixels)
+            {
+                result.Add(new Float2(x, y));
             }
 
             return result;
