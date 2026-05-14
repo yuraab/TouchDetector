@@ -253,9 +253,10 @@ namespace CPRTouchVision.Models
         public async void OnCompleted(Point[] points) 
         { 
             foreach (var point in points) {
-                var projectedPoint = Convert2DToDepthPoint((int) point.X, (int) point.Y);
-
+                //var projectedPoint = Convert2DToDepthPoint((int) point.X, (int) point.Y);
+                var projectedPoint = DepthPoint.From((int) point.X, (int) point.Y, 0,0,0);
                 _touchZonePoints.Add(projectedPoint);
+                App.Log($"Detected touch zone point at ({point.X}, {point.Y}), projected to depth point ({projectedPoint.SX}, {projectedPoint.SY}, {projectedPoint.X}, {projectedPoint.Y}, {projectedPoint.Z})");
             }
 
             await FinalizeTouchZoneAsync(); 
@@ -491,8 +492,6 @@ namespace CPRTouchVision.Models
 
             _depthWidth = _captureLoop.GetDepthResolution().width;
             _depthHeight = _captureLoop.GetDepthResolution().height;
-
-            _dep
 
             _captureLoop.Run();
             await StartTouchLoop();
@@ -747,7 +746,7 @@ namespace CPRTouchVision.Models
 
             //
             // Optional visualization
-            //
+            /*
 
             _depthBitmap.Update(bitmap =>
             {
@@ -755,7 +754,7 @@ namespace CPRTouchVision.Models
                     _depthVisualizer.Update(_nativeDepthData);
             });
 
-            //
+            */
             // Calibration accumulation
             //
 
@@ -842,11 +841,12 @@ namespace CPRTouchVision.Models
             if (!_floorCamera)
                 FlipDepth180(aligned);
             _depthData.CopyFrom(aligned);
-
+            /*
             _depthBitmap.Update((bitmap) =>
             {
                 bitmap.Pixels = _depthVisualizer.Update(_depthData);
             });
+            */
         }
 
         private void StopTouchLoop()
@@ -1436,7 +1436,6 @@ namespace CPRTouchVision.Models
                 for (int x = 0; x < _depthWidth; x += 2)
                 {
                     int i = row + x;
-                    int i = row + x;
 
                     ushort d = stableDepth[i];
 
@@ -1513,29 +1512,47 @@ namespace CPRTouchVision.Models
             // → native depth ROI
             //
 
-            var _depthSpaceTouchZone =
-                _touchZonePoints
-                    .Select(p =>
-                        PlaneChecker
-                            .ConvertColorPointToDepthSpaceViaPlane(
-                                p.SX,
-                                p.SY,
-                                _planeNormal,
-                                _planeD,
-                                _calibration))
-                    .Where(p => p != null)
-                    .Select(p => p.Value)
-                    .ToList();
+            var depthSpaceTouchZone = new List<Vector3>();
+
+            foreach (var p in _touchZonePoints)
+            {
+                var point =
+                    PlaneChecker.ConvertColorPointToDepthSpaceViaPlane(
+                        p.SX,
+                        p.SY,
+                        _planeNormal,
+                        _planeD,
+                        _calibration);
+
+                if (point != null)
+                {
+                    depthSpaceTouchZone.Add(point.Value);
+
+#if DEBUG || TEST
+                    App.Log(
+                        $"Color point ({p.SX}, {p.SY}) " +
+                        $"-> depth space {point.Value}");
+#endif
+                }
+                else
+                {
+#if DEBUG || TEST
+                    App.Log(
+                        $"Failed to convert color point " +
+                        $"({p.SX}, {p.SY}) to depth space.");
+#endif
+                }
+            }
 
 #if DEBUG || TEST || MOCK
 
             var filePath = Path.Combine(Constants.LOG_FOLDER, "stableDepth.bin");
+            Utilities.SaveCapturedFrame(stableDepth, filePath);
+
             App.Log("Depth-space points are saved to: " + filePath);
 
-
             App.Log("Depth-space touch zone points:");
-            Utilities.SaveCapturedFrame(stableDepth, filePath);    
-            foreach (var p in _depthSpaceTouchZone)
+            foreach (var p in depthSpaceTouchZone)
             {
                 App.Log($"Depth-space point: {p}");
                 App.Log($"Checking if this point on wall = {IsPointOnPlane(p, _planeNormal, _planeD)}");
