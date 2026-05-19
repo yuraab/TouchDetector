@@ -1156,6 +1156,31 @@ namespace CPRTouchVision.Models
         // Ray/slab intersection
         //
 
+        private static bool IntersectRayPlane(
+            Vector3 rayDir,
+            VolumePlane plane,
+            out float t)
+        {
+            t = 0;
+
+            //
+            // Plane: dot(N,P)+D=0
+            // Ray:P=rayDir*t
+            //
+
+            float denom =
+                Vector3.Dot(
+                    plane.Normal,
+                    rayDir);
+
+            if (MathF.Abs(denom) < 1e-6f)
+                return false;
+
+            t = -plane.D / denom;
+
+            return t > 0;
+        }
+
         private bool ComputeDepthRange(
             int x,
             int y,
@@ -1163,7 +1188,7 @@ namespace CPRTouchVision.Models
             out ushort dmax)
         {
             dmin = 0;
-            dmax = ushort.MaxValue;
+            dmax = 0;
 
             //
             // IMPORTANT:
@@ -1176,52 +1201,64 @@ namespace CPRTouchVision.Models
                     (y - _cy) / _fy,
                     1.0f);
 
-            float tNear = 0;
-            float tFar = 10000;
-
-            foreach (var p in _planes)
+            List<float> intersects = new List<float>(6);
+            foreach (var plane in _planes)
             {
-                float denom =
-                    Vector3.Dot(
-                        p.Normal,
-                        rayDir);
-
-                //
-                // dot(N,P)+D>=0
-                //
-
-                float numer = -p.D;
-
-                if (MathF.Abs(denom) < 1e-6f)
-                {
-                    //
-                    // Parallel
-                    //
-
-                    if (numer < 0)
-                        return false;
-
+                if (!IntersectRayPlane(rayDir, plane, out float t))
                     continue;
+
+                //
+                // 3D intersection point
+                //
+
+                var p = rayDir * t;
+
+                //
+                // Point must lie inside
+                // ALL half-spaces
+                //
+
+                bool inside = true;
+
+                foreach (var testPlane in _planes)
+                {
+                    float side =
+                        Vector3.Dot(
+                            testPlane.Normal,
+                            p)
+                        + testPlane.D;
+
+                    //
+                    // Outside
+                    //
+
+                    if (side < -0.001f)
+                    {
+                        inside = false;
+                        break;
+                    }
                 }
 
-                float t = numer / denom;
+                if (!inside)
+                    continue;
 
-                if (denom > 0)
-                    tNear = MathF.Max(tNear, t);
-                else
-                    tFar =
-                        MathF.Min(tFar, t);
+                //
+                // Deduplicate
+                //
 
-                if (tNear > tFar)
-                    return false;
+                bool exists =
+                    intersects.Any(v =>
+                        MathF.Abs(v - t) < 0.5f);
+
+                if (!exists)
+                    intersects.Add(t);
             }
+            
+            if (intersects.Count < 2) return false;
 
-            if (tFar <= 0)
-                return false;
-
-            dmin = (ushort)MathF.Max(0, MathF.Round(tNear));
-
-            dmax = (ushort)MathF.Round(tFar);
+            intersects.Sort();
+            dmin = (ushort)MathF.Round(intersects.First());
+            dmax = (ushort)MathF.Round(intersects.Last());
 
             return dmax > dmin;
         }
