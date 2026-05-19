@@ -40,7 +40,7 @@ namespace CPRTouchVision.Models
         public void SetTargetFps(int fps) => _minFrameInterval = TimeSpan.FromMilliseconds(1000.0 / fps);
 
         public TouchLoop(
-            TouchVolume volume, 
+            ITouchVolume volume, 
             Calibration calibration,
             List<ExclusionZone> exclusionZones = null,
             int maxRatePerSecond = 10)

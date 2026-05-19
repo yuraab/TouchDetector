@@ -92,6 +92,16 @@ namespace CPRTouchVision.Models
             return new Vector3(point.X, point.Y, point.Z);
         }
 
+        public static OBSharp.Float2 ToFloat2(this Vector2 point)
+        {
+            return new OBSharp.Float2(point.X, point.Y);
+        }
+
+        public static Vector2 ToVector2(this OBSharp.Float2 point)
+        {
+            return new Vector2(point.X, point.Y);
+        }
+
         public static void ActivateMinimized(this Window window)
         {
             ShowWindow(window.GetWindowHandle(), SW_MINIMIZED);

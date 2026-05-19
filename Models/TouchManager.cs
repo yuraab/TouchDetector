@@ -156,13 +156,25 @@ namespace CPRTouchVision.Models
 
         public event EventHandler HardwareChecksCompleted;
 
+        private List<Vector2> _pendingColorROI;
+        private TaskCompletionSource<List<Vector2>>? _depthROIRequest;
+        private int getROIAttempts;
+
+
+        private void SetInfoMessage(string message, bool isError = false)
+        {
+            InfoMessage = message;
+            IsError = isError;
+        }
+
         // This command can be bound directly to a Button's Command property
         [RelayCommand(CanExecute = nameof(CanRetry))]
+
         private async Task RunAllHardwareChecksAsync()
         {
             IsDeviceChecking = true;
 
-            InfoMessage = "Checking hardware connections...";
+            SetInfoMessage("Checking hardware connections...");
 
             // Reset all statuses to Pending before starting
             foreach (var item in HardwareItems) item.Status = StatusCode.Pending;
@@ -173,7 +185,7 @@ namespace CPRTouchVision.Models
 
             IsDeviceChecking = false;
 
-            InfoMessage = "Hardware check completed.";
+            SetInfoMessage("Hardware check completed.");
 
             UpdateHardwareReadiness();
 
@@ -208,7 +220,7 @@ namespace CPRTouchVision.Models
 
         partial void OnCalibrationStatusChanged(string value)
         {
-            InfoMessage = value;
+            SetInfoMessage(value);
             //App.Log(value);
         }
 
@@ -250,16 +262,52 @@ namespace CPRTouchVision.Models
             ? ""
             : "Please ensure all devices are connected to start.";
 
+        private bool IfDetectedZoneMeetExpectations(Point[] points)
+        {
+            if (points == null || points.Length != TouchZonePointsCount)
+            {
+                App.Log($"Expected {TouchZonePointsCount} points, but got {(points == null ? 0 : points.Length)}.");
+                return false;
+            }
+            for (int i = 0; i < TouchZonePointsCount; i++)
+            {
+                var p = points[i % TouchZonePointsCount];
+                if (p.X < 0 || p.Y < 0)
+                {
+                    App.Log($"Point {i} has invalid coordinates: ({p.X}, {p.Y}).");
+                    return false;
+                }
+                int nextIndex = (i + 1) % TouchZonePointsCount;
+                if (p.DistanceTo(points[nextIndex]) < Constants.TouchZoneDistanceThreshold)
+                {
+                    App.Log($"Point {i}: {p.X}/{p.Y} is too close to the next point: {points[nextIndex].X}/{points[nextIndex].Y}.");
+                    return false;
+                }
+            }
+            return true;
+        }
+
         public async void OnCompleted(Point[] points) 
         { 
-            foreach (var point in points) {
-                //var projectedPoint = Convert2DToDepthPoint((int) point.X, (int) point.Y);
-                var projectedPoint = DepthPoint.From((int) point.X, (int) point.Y, 0,0,0);
-                _touchZonePoints.Add(projectedPoint);
-                App.Log($"Detected touch zone point at ({point.X}, {point.Y}), projected to depth point ({projectedPoint.SX}, {projectedPoint.SY}, {projectedPoint.X}, {projectedPoint.Y}, {projectedPoint.Z})");
-            }
+            if(IfDetectedZoneMeetExpectations(points))            {
+                SetInfoMessage("Touch zone detected successfully.");
 
-            await FinalizeTouchZoneAsync(); 
+                foreach (var point in points)
+                {
+                    //var projectedPoint = Convert2DToDepthPoint((int) point.X, (int) point.Y);
+                    var projectedPoint = DepthPoint.From((int)point.X, (int)point.Y, 0, 0, 0);
+                    _touchZonePoints.Add(projectedPoint);
+                    App.Log($"Detected touch zone point at ({point.X}, {point.Y}), projected to depth point ({_touchZonePoints.Last().SX}, {_touchZonePoints.Last().SY}, {_touchZonePoints.Last().X}, {_touchZonePoints.Last().Y}, {_touchZonePoints.Last().Z})");
+                }
+
+                await FinalizeTouchZoneAsync();
+            }
+            else
+            {
+                OnFailed(Constants.ZoneDetectionUnexpected);
+                return;
+            }
+             
         } 
         public void OnFailed(string reason) 
         { 
@@ -272,10 +320,10 @@ namespace CPRTouchVision.Models
                     Changed?.Invoke(this, TouchManagerEventType.CalibrationFailed);
                     break;
                 case "Camera position not defined":
-                    InfoMessage = "Calibration failed: Camera position is not defined. Please ensure the camera is properly mounted and try again.";
+                    SetInfoMessage(Constants.CalibrationFailedCameraPosition, true);
                     break;
                 default:
-                    InfoMessage = $"Calibration failed: {reason}";
+                    SetInfoMessage($"Calibration failed: {reason}", true);
                     break;
             }  
         }
@@ -323,8 +371,8 @@ namespace CPRTouchVision.Models
         private Vector3 _planeNormal = Vector3.Zero;
         private Vector3 _cameraPosition = Vector3.Zero;
 
-        private TouchVolume _detectableSpace;
-        public TouchVolume DetectableSpace => _detectableSpace;
+        private ITouchVolume _detectableSpace;
+        public ITouchVolume DetectableSpace => _detectableSpace;
 
         private List<ExclusionZone>? _exclusionZones;
         public ExclusionZone[]? ExclusionZones => _exclusionZones?.ToArray();
@@ -507,26 +555,37 @@ namespace CPRTouchVision.Models
 #endif
             if (IsRunningTrackTouch || !IsReadyTrackTouch) return;
 
-            _detectableSpace = new TouchVolume( _planeNormal, 
+            if (!useRawDepthData)
+            {
+                App.Log("Using aligned depth data for touch detection");
+
+                _detectableSpace = new TouchVolume(_planeNormal,
+                                                    _planeD,
+                                                    MinOffset * 10,   //convert from centimeters
+                                                    MaxOffset * 10,   //convert from centimeters
+                                                    TouchZonePoints,
+                                                    _minWallDepth, _maxWallDepth,
+                                                    _depthWidth, _depthHeight,
+                                                    _calibration
+                                                   );
+            }
+            else
+            {
+                App.Log("Using LUT touch volume for touch detection");
+
+                _detectableSpace = await LutTouchVolume.CreateAsync(
+                                                _planeNormal,
                                                 _planeD,
-                                                MinOffset*10,   //convert from centimeters
-                                                MaxOffset*10,   //convert from centimeters
-                                                TouchZonePoints,
-                                                _minWallDepth, _maxWallDepth,
-                                                _fw, _fh, _calibration
+                                                MinOffset * 10,   //convert from centimeters
+                                                MaxOffset * 10,   //convert from centimeters
+                                                depthSpaceTouchZone.ToArray(),
+                                                _depthWidth, _depthHeight,
+                                                _calibration
                                                );
-
-            var alternateDetectableSpace = await TouchVolumeSlab.CreateAsync(
-                                                _planeNormal, 
-                                                -_planeD,
-                                                MinOffset*10,   //convert from centimeters
-                                                MaxOffset*10,   //convert from centimeters
-                                                TouchZonePoints,
-                                                _fw, _fh, _calibration
-                                               );
-
+            }
 
             _touchLoop = new(_detectableSpace, _calibration, _exclusionZones);
+
             _touchLoop.TouchFrameReady += OnTouchFrameReady;
             _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
             _touchLoop.ReadyForNewImage += OnReadyForNewImage;
@@ -542,7 +601,7 @@ namespace CPRTouchVision.Models
             IsRunningTrackTouch = true;
 
             _isReadyReceiveNewCapture = true;
-            _detectableSpace.WallNotAligned += OnWallNotAligned;
+            //_detectableSpace.WallNotAligned += OnWallNotAligned;
 
 #if TEST || MOCK
             isImageSaved = false;
@@ -722,69 +781,163 @@ namespace CPRTouchVision.Models
             //
 
             using var depthImage = capture.DepthImage;
+             
+                if (depthImage == null)
+                    return;
 
-            if (depthImage == null)
-                return;
+                if (!_floorCamera)
+                    FlipDepth180(depthImage);
 
-            if (!_floorCamera)
-                FlipDepth180(depthImage);
+                //
+                // MAIN PIPELINE USES NATIVE DEPTH
+                //
+                int required =
+                    depthImage.WidthPixels *
+                    depthImage.HeightPixels;
 
-            //
-            // MAIN PIPELINE USES NATIVE DEPTH
-            //
-            int required =
-                depthImage.WidthPixels *
-                depthImage.HeightPixels;
+                if (_nativeDepthData.Length != required)
+                {
+                    _nativeDepthData =
+                        new ushort[required];
+                }
 
-            if (_nativeDepthData.Length != required)
-            {
-                _nativeDepthData =
-                    new ushort[required];
-            }
+                _nativeDepthData.CopyFrom(depthImage);
 
-            _nativeDepthData.CopyFrom(depthImage);
+                //
+                // Optional visualization
+                /*
 
-            //
-            // Optional visualization
-            /*
+                _depthBitmap.Update(bitmap =>
+                {
+                    bitmap.Pixels =
+                        _depthVisualizer.Update(_nativeDepthData);
+                });
 
-            _depthBitmap.Update(bitmap =>
-            {
-                bitmap.Pixels =
-                    _depthVisualizer.Update(_nativeDepthData);
-            });
+                */
+                // Calibration accumulation
+                //
 
-            */
-            // Calibration accumulation
-            //
+                if (IsCollectingFrames)
+                {
+                    WindowAccumulator? acc;
 
-            if (IsCollectingFrames)
-            {
-                WindowAccumulator? acc;
+                    lock (_collectLock)
+                        acc = _winAccum;
 
-                lock (_collectLock)
-                    acc = _winAccum;
+                    acc?.AddFrame(_nativeDepthData);
+                }
 
-                acc?.AddFrame(_nativeDepthData);
-            }
+                if (_depthROIRequest != null)
+                {
 
-            //
-            // Runtime touch processing
-            //
+                    App.Log("Got the ROI request");
+                    try
+                    {
+                        var result = new List<Vector2>();
+#if DEBUG || TEST
+                        App.Log(
+                            $"Having {_touchZonePoints.Count} Depth point(s)");
 
-            if (_isReadyReceiveNewCapture &&
-                _touchLoop != null)
-            {
-                _ = _touchLoop.TrySendImage(
-                    _nativeDepthData,
-                    depthImage.WidthPixels,
-                    depthImage.HeightPixels,
-                    now);
-            }
+#endif
+                        //
+                        // Use ORIGINAL native depth image
+                        //
 
+
+
+                        foreach (var p in _touchZonePoints)
+                        {
+                            var depthPoint =
+                                _calibration.ConvertColor2DToDepth2D(
+                                    new OBSharp.Float2(p.SX, p.SY),
+                                    depthImage);
+#if DEBUG || TEST
+                            App.Log(
+                                $"Trying convert Color point ({p.SX}, {p.SY}) to Depth point");
+#endif
+
+                            if (depthPoint != null)
+                            {
+                                result.Add(new Vector2(
+                                    depthPoint.Value.X,
+                                    depthPoint.Value.Y));
+
+    #if DEBUG || TEST
+                                App.Log(
+                                    $"Color point ({p.SX}, {p.SY}) " +
+                                    $"-> depth point " +
+                                    $"({depthPoint.Value.X}, {depthPoint.Value.Y})");
+    #endif
+                            }
+                            else
+                            {
+
+                                throw new Exception($"Failed to convert color point ({p.SX}, {p.SY}) to depth space.");
+                            }
+                        }
+
+                        _depthROIRequest.TrySetResult(result);
+                        ResetROIAttemps();
+                    }
+                    catch (Exception ex)
+                    {
+                        getROIAttempts++;
+#if DEBUG || TEST
+                        App.Log(
+                             $"Attempt {getROIAttempts}: Failed to get ROI points in depth space. Error: {ex.Message}");
+#endif
+                        if (getROIAttempts == Constants.MaxROIAttempts)
+                        {
+                            _depthROIRequest.TrySetResult(new List<Vector2>());
+                            App.Log("Failed to get ROI after maximum attempts. Returning empty result.");
+                            ResetROIAttemps();
+                        }
+                    }
+                    finally
+                    {
+                        if (getROIAttempts == Constants.MaxROIAttempts)
+                        {
+                            _depthROIRequest.TrySetResult(new List<Vector2>());
+                            App.Log("Failed to get ROI after maximum attempts. Returning empty result.");
+                            ResetROIAttemps();
+                        }
+                        else
+                        {
+                            App.Log("ROI request completed");
+                        }
+                         
+                    }
+                }
+
+                //
+                // Runtime touch processing
+                //
+
+                if (_isReadyReceiveNewCapture &&
+                    _touchLoop != null)
+                {
+                    _ = _touchLoop.TrySendImage(
+                        _nativeDepthData,
+                        depthImage.WidthPixels,
+                        depthImage.HeightPixels,
+                        now);
+                }
+            
             Changed?.Invoke(
                 this,
                 TouchManagerEventType.NewFrame);
+        }
+
+        private void StartROIAttemps()
+        {
+            _depthROIRequest =new TaskCompletionSource<List<Vector2>>();
+            getROIAttempts = 0;
+        }
+
+        private void ResetROIAttemps()
+        {
+            _depthROIRequest = null;
+            getROIAttempts = 0;
         }
 
 
@@ -1202,29 +1355,42 @@ namespace CPRTouchVision.Models
             ).ToList();
         }
 
-        private (int, int, int, int) GetCalibrationWindow(List<Vector2> points, int extra = 10)
+        private async Task<(bool, int, int, int, int)> GetCalibrationWindow(
+            List<Vector2> points, 
+            int width, int height, int extra = 0)
         {
-            int minX = int.MaxValue;
-            int minY = int.MaxValue;
-            int maxX = int.MinValue;
-            int maxY = int.MinValue;
+            StartROIAttemps();
 
-            foreach (var point in points)
-            {
-                minX = Math.Min((int)point.X, minX);
-                minY = Math.Min((int)point.Y, minY);
-                maxX = Math.Max((int)point.X, maxX);
-                maxY = Math.Max((int)point.Y, maxY);
-            }
+            List<Vector2> depthPoints = await _depthROIRequest.Task;
 
-            minX = Math.Max(minX - extra, 0);
-            minY = Math.Max(minY - extra, 0);
-            maxX = Math.Min(maxX + extra, _fw - 1);
-            maxY = Math.Min(maxY + extra, _fh - 1);
+            if (depthPoints.Count < 4)
+                return (false, 0, 0, width, height);
 
-            int w = maxX - minX + 1;
-            int h = maxY - minY + 1;
-            return (minX, minY, w, h);
+            //
+            // Compute bounds
+            //
+
+            int minX =
+                Math.Max(
+                    0,
+                    (int)depthPoints.Min(p => p.X) - extra);
+
+            int minY =
+                Math.Max(
+                    0,
+                    (int)depthPoints.Min(p => p.Y) - extra);
+
+            int maxX =
+                Math.Min(
+                    width - 1,
+                    (int)depthPoints.Max(p => p.X) + extra);
+
+            int maxY =
+                Math.Min(
+                    height - 1,
+                    (int)depthPoints.Max(p => p.Y) + extra);
+
+            return (true, minX, minY, maxX - minX + 1, maxY - minY + 1);
         }
 
         private async void WallPlane()
@@ -1234,9 +1400,12 @@ namespace CPRTouchVision.Models
 
             IsFittingPlane = true;
 
+            bool success;
             int minX, minY, w, h;
             //var calibrationPoints = _calibrationPoints.Select(p => new Vector2(p.X, p.Y)).ToList();
-            (minX, minY, w, h) = GetCalibrationWindow(_touchZonePoints.Select(p => new Vector2(p.World.X, p.World.Y)).ToList());
+            (success, minX, minY, w, h) = await GetCalibrationWindow(
+                _touchZonePoints.Select(p => new Vector2(p.World.X, p.World.Y)).ToList(),
+                _fw, _fh);
             Vector3[] result = new Vector3[w * h];
             float minD = float.MaxValue, maxD = 0f;
             lock (_depthLock)
@@ -1313,11 +1482,10 @@ namespace CPRTouchVision.Models
             if (IsTouchZoneDefining)
                 return;
 
-            IsTouchZoneDefining = true;
+            StartWallDefinig();
             IsTouchZoneSet = false;
 
-            InfoMessage =
-                Constants.CollectingFramesForPlaneFitting;
+            SetInfoMessage(Constants.CollectingFramesForPlaneFitting);
 
             //
             // STEP 1
@@ -1325,37 +1493,55 @@ namespace CPRTouchVision.Models
             // from color-space polygon
             //
 
-            var touchZonePoints =
-                _touchZonePoints
-                    .Select(p => new Vector2(p.SX, p.SY))
-                    .ToList();
+            bool success;
+            int minX, minY, w, h;
 
-            //
-            // Approximate ROI bootstrap
-            // using color-space bounds
-            //
+            var colorROI = _touchZonePoints.Select(p => new Vector2(p.World.X, p.World.Y)).ToList();
+            (success, minX, minY, w, h) = await GetCalibrationWindow(
+                colorROI,
+                _depthWidth, _depthHeight);
 
-            int minX = (int)touchZonePoints.Min(p => p.X);
-            int minY = (int)touchZonePoints.Min(p => p.Y);
+#if DEBUG || TEST
+            App.Log($"Transformation ROI from color to depth space is successful = {success}");
+            int minXColor =
+                Math.Max(
+                    0,
+                    (int)colorROI.Min(p => p.X));
 
-            int maxX = (int)touchZonePoints.Max(p => p.X);
-            int maxY = (int)touchZonePoints.Max(p => p.Y);
+            int minYColor =
+                Math.Max(
+                    0,
+                    (int)colorROI.Min(p => p.Y));
 
-            int w = maxX - minX + 1;
-            int h = maxY - minY + 1;
+            int maxXColor =
+                Math.Min(
+                    _fw - 1,
+                    (int)colorROI.Max(p => p.X));
 
+            int maxYColor =
+                Math.Min(
+                    _fh - 1,
+                    (int)colorROI.Max(p => p.Y));
+
+
+            App.Log($"Color ROI ({minXColor}/{maxXColor}, {minYColor}/{maxYColor}) -> depth space ROI ({minX}/{minX+w+1}, {minY}/{minY+h+1})");
+#endif
+
+            if (!success)
+            {
+                OnFailed(Constants.ROIForPlaneFittingFailed);
+                StopWallDefinig();
+                return;
+            }
             //
             // IMPORTANT:
-            // During bootstrap we still use full-frame
+            // During bootstrap we use 
             // native depth accumulation.
             //
-            
+
 
             _winAccum = new WindowAccumulator(
-                0,
-                0,
-                _depthWidth,
-                _depthHeight,
+                minX, minY, w, h,
                 _depthWidth,
                 _depthHeight,
                 _accCapacityPerPixel);
@@ -1403,7 +1589,8 @@ namespace CPRTouchVision.Models
 
             if (ready == null)
             {
-                IsTouchZoneDefining = false;
+                OnFailed(Constants.FrameCollectionFailed);
+                StopWallDefinig();
                 return;
             }
 
@@ -1419,7 +1606,7 @@ namespace CPRTouchVision.Models
                 stableDepth,
                 useMedian: true);
 
-            InfoMessage = Constants.FittingPlane;
+            SetInfoMessage(Constants.FittingPlane);
 
             //
             // STEP 2
@@ -1444,8 +1631,7 @@ namespace CPRTouchVision.Models
 
                     var world =
                         _calibration.Convert2DTo3D(
-                            new(x, y),
-                            d,
+                            new(x, y), d,
                             CalibrationGeometry.Depth,
                             CalibrationGeometry.Depth);
 
@@ -1512,7 +1698,7 @@ namespace CPRTouchVision.Models
             // → native depth ROI
             //
 
-            var depthSpaceTouchZone = new List<Vector3>();
+            depthSpaceTouchZone = new List<Vector3>();
 
             foreach (var p in _touchZonePoints)
             {
@@ -1565,13 +1751,20 @@ namespace CPRTouchVision.Models
 
             IsWallPlaneSet = true;
             IsTouchZoneSet = true;
-            IsTouchZoneDefining = false;
+            StopWallDefinig();
 
-            InfoMessage =
-                Constants.WallPlaneDetected;
+            SetInfoMessage(Constants.WallPlaneDetected);
         }
 
+        private void StartWallDefinig()
+        {
+            IsTouchZoneDefining = true;
+        }
 
+        private void StopWallDefinig()
+        {
+            IsTouchZoneDefining = false;
+        }
 
         private List<ExclusionZone>? DetectLedges(
             List<Vector3> points, 
@@ -1751,11 +1944,11 @@ namespace CPRTouchVision.Models
             {
                 var p = _calibration.Convert2DTo3D(new(value.X, value.Y), d, CalibrationGeometry.Color, CalibrationGeometry.Depth)?.ToVector3();
                 p = p / 1000.0f;
-                InfoMessage = $"({value.X};{value.Y}) - ({p.Value.X}; {p.Value.Y}; {p.Value.Z})m;";
+                SetInfoMessage($"({value.X};{value.Y}) - ({p.Value.X}; {p.Value.Y}; {p.Value.Z})m;");
             }
             else
             {
-                InfoMessage = $"({value.X};{value.Y})";
+                SetInfoMessage($"({value.X};{value.Y})");
             }
 
         }
@@ -1924,6 +2117,8 @@ namespace CPRTouchVision.Models
         public static string CONFIG_SUB_FOLDER = "CPR Touch Vision";
         private int _depthWidth;
         private int _depthHeight;
+        private List<Vector3> depthSpaceTouchZone;
+        private bool useRawDepthData = true;
 
         public static string CONFIG_FOLDER => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
         [Obfuscation(Exclude = true, Feature = "string encryption")]

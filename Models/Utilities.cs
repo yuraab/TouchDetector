@@ -14,6 +14,8 @@ namespace CPRTouchVision.Models
         public const bool InitialIsAutoMode = true;
         public const bool InitialStartInAutoMode = true;
 
+        public const int MaxROIAttempts = 5;
+
         public const string TopLeft = "TopLeft";
         public const string TopRight = "TopRight";
         public const string BottomRight = "BottomRight";
@@ -34,7 +36,15 @@ namespace CPRTouchVision.Models
         public const string WallPlaneNormalZero = "The wall plane normal cannot be a zero vector.";
 
         //Messages
+
+        //Failures
         public const string ZoneDetectionFailed = "Failed to detect touch zone.";
+        public const string ZoneDetectionUnexpected = "Detected zone does not meet expectations";
+        public const string CalibrationFailedCameraPosition = "Calibration failed: Camera position is not defined. Please ensure the camera is properly mounted and try again.";
+        public const string FrameCollectionFailed = "Frame collection failed.";
+        public const string ROIForPlaneFittingFailed = "ROI for plane fitting failed.";
+
+        //Info
         public const string CollectingFramesForPlaneFitting = "Collecting frames for plane fitting... Please wait and do not move.";
         public const string FittingPlane = "Fitting plane... Please wait.";
         public const string WallPlaneDetected = "Wall plane detected.";
@@ -64,7 +74,10 @@ namespace CPRTouchVision.Models
 
         public static string FailureIndicatorMessage => "Failure";
 
+        public static double TouchZoneDistanceThreshold = 10;
+        
         public const int CalibrationAttemptsDelay = 2000; // in ms
+        
     }
 
     public class Utilities

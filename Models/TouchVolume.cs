@@ -993,6 +993,9 @@ namespace CPRTouchVision.Models
             _fx = intr.Fx;
             _fy = intr.Fy;
 
+#if DEBUG || TEST
+            App.Log($"Creating LutTouchVolume with wallNormal={wallNormal}, wallD={wallD}, minOffset={minOffset}, maxOffset={maxOffset}");
+#endif
             _wallNormal = Vector3.Normalize(wallNormal);
 
             _wallD = wallD;
@@ -1045,7 +1048,10 @@ namespace CPRTouchVision.Models
                     v._minY,
                     v._maxY
                 ) = v.ComputeBounds();
+#if DEBUG || TEST
+                App.Log($"Computed bounds: X={v._minX}-{v._maxX}, Y={v._minY}-{v._maxY}");  
 
+#endif
                 v.IsReady = true;
             });
 
@@ -1067,13 +1073,13 @@ namespace CPRTouchVision.Models
 
             Vector3 farPoint =
                 _quadCorners[0]
-                + _wallNormal * _minOffset;
+                - _wallNormal * _minOffset;
 
             planes[0] =
                 new VolumePlane(
                     _wallNormal,
                     -Vector3.Dot(
-                        _wallNormal,
+                        -_wallNormal,
                         farPoint));
 
             //
@@ -1082,13 +1088,13 @@ namespace CPRTouchVision.Models
 
             Vector3 nearPoint =
                 _quadCorners[0]
-                + _wallNormal * _maxOffset;
+                - _wallNormal * _maxOffset;
 
             planes[1] =
                 new VolumePlane(
                     -_wallNormal,
                     -Vector3.Dot(
-                        -_wallNormal,
+                        _wallNormal,
                         nearPoint));
 
             //
@@ -1135,7 +1141,14 @@ namespace CPRTouchVision.Models
                         sideNormal,
                         d);
             }
-
+#if DEBUG || TEST
+            App.Log("Planes for touch volume:");
+           for (int i = 0; i < planes.Length; i++)
+            {
+                var p = planes[i];
+                App.Log($"Plane {i}: normal={p.Normal}, d={p.D}");
+            }
+#endif
             return planes;
         }
 
