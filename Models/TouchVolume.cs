@@ -1195,10 +1195,10 @@ namespace CPRTouchVision.Models
                 ) = v.ComputeBounds();
 #if DEBUG || TEST
                 App.Log($"Computed bounds: X={v._minX}-{v._maxX}, Y={v._minY}-{v._maxY}");  
-                v.SaveLutToCsv(Utilities.GET_PATH("lut.csv"));
+                v.SaveLutToCsv(Utilities.GetPath("lut.csv"));
                 App.Log("LUT is saved to lut.csv");
 
-                v.SaveLutMask(Utilities.GET_PATH("lut_mask.png"));
+                v.SaveLutMask(Utilities.GetPath("lut_mask.png"));
                 App.Log("LUT is saved to lut_mask.png");
 #endif
                 v.IsReady = true;

@@ -57,6 +57,9 @@ namespace CPRTouchVision.Models
         public static string CONFIG_PATH => Path.Combine(CONFIG_FOLDER, "config.json");
 
         public const string CalibrationImageFile = "calibration_image.png";
+
+        public const string StableDepthFile = "stableDepth.bin";
+
         public static string HomeDir => CONFIG_FOLDER;
         public static string CommonFolderPath
         {
@@ -83,7 +86,7 @@ namespace CPRTouchVision.Models
 
     public class Utilities
     {
-        public static string GET_PATH(string filename) => Path.Combine(Constants.LOG_FOLDER, filename);
+        public static string GetPath(string filename) => Path.Combine(Constants.LOG_FOLDER, filename);
         public static string GetHomeDirectory()
         {
             if (!Directory.Exists(Constants.HomeDir))
@@ -108,6 +111,13 @@ namespace CPRTouchVision.Models
             File.WriteAllBytes(filePath, byteArray);
         }
 
+        public static ushort[] ReadCapturedFrame(string filePath)
+        {
+            byte[] byteArray = File.ReadAllBytes(filePath);
+            ushort[] frameData = new ushort[byteArray.Length / 2];
+            Buffer.BlockCopy(byteArray, 0, frameData, 0, byteArray.Length);
+            return frameData;
+        }
 
 
     }

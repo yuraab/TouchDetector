@@ -1732,7 +1732,7 @@ namespace CPRTouchVision.Models
 
 #if DEBUG || TEST || MOCK
 
-            var filePath = Path.Combine(Constants.LOG_FOLDER, "stableDepth.bin");
+            var filePath = Utilities.GetPath(Constants.StableDepthFile);
             Utilities.SaveCapturedFrame(stableDepth, filePath);
 
             App.Log("Depth-space points are saved to: " + filePath);

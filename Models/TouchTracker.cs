@@ -25,6 +25,8 @@ namespace CPRTouchVision.Models
         private bool _isDisposed;
         private int _maxQueueSize;
 
+        private ushort[] sample;
+
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
         public TouchTracker_(
@@ -55,6 +57,8 @@ namespace CPRTouchVision.Models
 
 #if DEBUG || TEST
             App.Log("TouchTracker created.");
+
+            sample = Utilities.ReadCapturedFrame(Utilities.GetPath(Constants.StableDepthFile));
 #endif
             _maxQueueSize = maxQueueSize;
         }
@@ -143,8 +147,10 @@ namespace CPRTouchVision.Models
         {
             List<Touch2DCluster> clusters = new List<Touch2DCluster>();
 
-            //var points = Extract3DPointsInsideVolume(image);
-            var points = Extract2DPointsInsideVolume(image);
+            
+            //var points = Extract2DPointsInsideVolume(image);
+
+            var points = Extract2DPointsInsideVolume(sample);
 #if DEBUG || TEST
             if (points.Count >= _clusterManager.MinPoints)
             {
