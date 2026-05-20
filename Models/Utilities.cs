@@ -52,16 +52,17 @@ namespace CPRTouchVision.Models
         [Obfuscation(Exclude = true, Feature = "string encryption")]
         public static string CONFIG_SUB_FOLDER = "CPR Touch Vision";
         public const string LOG_FOLDER = "C:\\Users\\CPR-PC\\CPRTouchVisionLogs";
-        public static string CONFIG_FOLDER => System.IO.Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
+        public static string CONFIG_FOLDER => Path.Combine(CommonFolderPath, CONFIG_SUB_FOLDER);
         [Obfuscation(Exclude = true, Feature = "string encryption")]
-        public static string CONFIG_PATH => System.IO.Path.Combine(CONFIG_FOLDER, "config.json");
+        public static string CONFIG_PATH => Path.Combine(CONFIG_FOLDER, "config.json");
+
         public const string CalibrationImageFile = "calibration_image.png";
         public static string HomeDir => CONFIG_FOLDER;
         public static string CommonFolderPath
         {
             get
             {
-                var result = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "CPR Soft");
+                var result = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "CPR Soft");
 
                 if (!Directory.Exists(result))
                 {
@@ -82,6 +83,7 @@ namespace CPRTouchVision.Models
 
     public class Utilities
     {
+        public static string GET_PATH(string filename) => Path.Combine(Constants.LOG_FOLDER, filename);
         public static string GetHomeDirectory()
         {
             if (!Directory.Exists(Constants.HomeDir))
@@ -105,6 +107,8 @@ namespace CPRTouchVision.Models
             // Write all bytes to disk instantly
             File.WriteAllBytes(filePath, byteArray);
         }
+
+
 
     }
 

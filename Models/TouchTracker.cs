@@ -169,6 +169,11 @@ namespace CPRTouchVision.Models
                 }
 
                 App.Log($"[TouchTracker] Detected {clusters.Count} clusters after exclusion filtering.");
+                foreach (var cluster in clusters)
+                {
+                    App.Log($"Cluster: Center={cluster.Center}, Radius={cluster.Radius}, Count={cluster.Count}");
+                }
+
 
                 foreach (var cluster in clusters)
                 {
