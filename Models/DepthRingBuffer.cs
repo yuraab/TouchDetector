@@ -104,6 +104,34 @@ namespace CPRTouchVision.Models
                         _cells[i].TrimmedMean(trimmedFrac));
             });
         }
+
+        public ushort[] BuildDepthMap(bool useMedian)
+        {
+            ushort[] result =
+                new ushort[W * H];
+
+            BuildDepthMap(result, useMedian);
+
+            return result;
+        }
+
+        public int GetROIWidth() => W;
+        public int GetROIHeight() => H;
+
+        public int GetFrameXByRoiX(int x) => MinX + x;
+        public int GetFrameYByRoiY(int y) => MinY + y;
+
+        public int GetFrameIndexByRoiIndex(int i)
+        {
+            int roiX = i % W;
+            int roiY = i / W;
+
+            int fullX = MinX + roiX;
+            int fullY = MinY + roiY;
+
+            return fullY * frameW + fullX;
+        }
+
     }
 
 }

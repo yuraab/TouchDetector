@@ -56,9 +56,10 @@ namespace CPRTouchVision.Models
             };
 
 #if DEBUG || TEST
-            App.Log("TouchTracker created.");
+            
 
             sample = Utilities.ReadCapturedFrame(Utilities.GetPath(Constants.StableDepthFile));
+            App.Log("TouchTracker created. sample loaded.");
 #endif
             _maxQueueSize = maxQueueSize;
         }
@@ -146,21 +147,10 @@ namespace CPRTouchVision.Models
         private void ProcessImage(ushort[] image, DateTime time)
         {
             List<Touch2DCluster> clusters = new List<Touch2DCluster>();
+            var processingStart = DateTime.Now;
 
-            
-            //var points = Extract2DPointsInsideVolume(image);
+            var points = Extract2DPointsInsideVolume(image);
 
-            var points = Extract2DPointsInsideVolume(sample);
-#if DEBUG || TEST
-            if (points.Count >= _clusterManager.MinPoints)
-            {
-                App.Log($"Filtered points count: {points.Count}");
-            }
-            else
-            {
-                App.Log($"Not enough points for clustering. Count: {points.Count}");
-            }
-#endif
             if (points.Count < _clusterManager.MinPoints)
             {
                 return;
@@ -174,21 +164,38 @@ namespace CPRTouchVision.Models
                     clusters = _exclusionManager.FilterClusters(clusters);
                 }
 
-                App.Log($"[TouchTracker] Detected {clusters.Count} clusters after exclusion filtering.");
                 foreach (var cluster in clusters)
                 {
-                    App.Log($"Cluster: Center={cluster.Center}, Radius={cluster.Radius}, Count={cluster.Count}");
-                }
-
-
-                foreach (var cluster in clusters)
-                {
-                    cluster.NormalizedCenter = _volume.GetHomographyCoordinatesFrom2D(cluster.Center);
+                    cluster.NormalizedCenter = _volume.GetRelativeScreenCoordinatesFrom2D(cluster.Center);
                     cluster.Center3D = _volume.Get3DPointFromLocal2DPoint(cluster.Center);
                 }
                 var frame = new TouchFrame(clusters);
                 TouchFrameReady?.Invoke(this, frame);
             }
+            var processingEnd = DateTime.Now;
+#if DEBUG || TEST
+            if (points.Count >= _clusterManager.MinPoints)
+            {
+                App.Log($"Filtered points count: {points.Count}");
+            }
+            else
+            {
+                App.Log($"Not enough points for clustering. Count: {points.Count}");
+            }
+
+            if (clusters?.Count > 0)
+            {
+                App.Log($"[TouchTracker] Detected {clusters.Count} clusters after exclusion filtering.");
+                foreach (var cluster in clusters)
+                {
+                    App.Log($"Cluster: Center={cluster.Center}, Radius={cluster.Radius}, Count={cluster.Count}");
+                }
+            }
+
+            App.Log($"[TouchTracker] Processed frame in {(processingEnd - processingStart).TotalMilliseconds:F2} ms.");
+
+#endif
+
         }
 
         private List<OB.Float2> Extract2DPointsInsideVolume(ushort[] depthImage)

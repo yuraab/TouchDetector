@@ -23,336 +23,9 @@ using Vector3 = System.Numerics.Vector3;
 
 namespace CPRTouchVision.Models
 {
-
-    /// <summary>
-    /// For each depth pixel ray, computes the entry (dmin) and exit (dmax) depth values
-    /// where the ray intersects the extruded quadrilateral volume.
-    /// The volume is defined as the extrusion of a quad (on a plane) toward the camera.
-    /// </summary>
-    public class TouchVolumeSlab
-    {
-        // Camera intrinsics
-        private readonly float _fx, _fy, _cx, _cy;
-
-        // Depth camera resolution  
-        private readonly int _fw, _fh;
-
-        // Plane equation: dot(N, P) = d
-        private readonly Vector3 _wallNormal;
-        private readonly float _wallDistance;
-        public Plane WallPlane => new Plane(_wallNormal, _wallDistance);  
-
-        // Extrusion offsets along the plane normal TOWARD the camera
-        private readonly float _minOffset;
-        private readonly float _maxOffset;
-
-        // The 4 corners of the quad ON the plane, in 3D world space (depth camera space)
-        // Must be ordered (convex, consistent winding)
-        private readonly Vector3[] _quadCorners; // length 4
-
-        // Precomputed: the 6 planes bounding the volume (2 face planes + 4 side planes)
-        private readonly (Vector3 Normal, float D)[] _boundingPlanes; // length 6
-
-        // LUT
-        private readonly (int DMin, int DMax)?[,] _lut;
-
-        // Tight bounds
-        private int _minX, _maxX, _minY, _maxY;
-
-        private bool _isReady = false;
-        public bool IsReady => _isReady;
-
-        private readonly ICalibrationProgress _progress;
-
-        private TouchVolumeSlab(
-            Vector3 _wallNormal, float _wallDistance,
-            float minOffset, float maxOffset,
-            DepthPoint[] quadCorners,
-            int fw, int fh,
-            Calibration calibration
-        )
-        {
-            _fw = fw;
-            _fh = fh;
-
-            var intr = calibration.DepthCameraCalibration.Intrinsics.Parameters;
-
-            _cx = intr.Cx;
-            _cy = intr.Cy;
-            _fx = intr.Fx;
-            _fy = intr.Fy;
-
-            _wallNormal = Vector3.Normalize(_wallNormal);
-            _wallDistance= _wallDistance;
-
-            _minOffset = minOffset;
-            _maxOffset = maxOffset;
-
-
-            _quadCorners = new Vector3[] { 
-                quadCorners[0].World, 
-                quadCorners[1].World, 
-                quadCorners[2].World, 
-                quadCorners[3].World 
-            };
-
-            _boundingPlanes = PrecomputeBoundingPlanes();
-
-            _lut = new (int DMin, int DMax)?[_fw, _fh];
-        }
-
-        /// <summary>
-        /// Factory method — construction and heavy computation off the UI thread.
-        /// </summary>
-        public static async Task<TouchVolumeSlab> CreateAsync(
-            Vector3 _wallNormal, float _wallDistance,
-            float minOffset, float maxOffset,
-            DepthPoint[] quadCorners,
-            int fw, int fh,
-            Calibration calibration,
-            IProgress<string>? progress = null)
-        {
-            var instance = new TouchVolumeSlab(
-                _wallNormal, _wallDistance,
-                minOffset, maxOffset,
-                quadCorners,
-                fw, fh,
-                calibration
-            );
-
-            await Task.Run(() =>
-            {
-                progress?.Report("Building LUT...");
-                instance.BuildLut();
-
-                progress?.Report("Computing bounds...");
-                (instance._minX, instance._maxX,
-                 instance._minY, instance._maxY) = instance.ComputeTightBounds();
-
-#if DEBUG || TEST
-
-
-                App.Log($"Min/Max indexes: X => {instance._minX}/{instance._maxX}; Y => {instance._minY}/{instance._maxY}");
-#endif
-                instance._isReady = true;
-            });
-
-            return instance;
-        }
-
-
-        /// <summary>
-        /// Precompute the 6 half-space planes that define the extruded volume.
-        ///
-        /// The volume is a frustum-like prism:
-        ///
-        ///   Far face  (wall plane offset by extrudeMin along normal toward camera)
-        ///   Near face (wall plane offset by extrudeMax along normal toward camera)
-        ///   4 side planes (one per quad edge, extruded)
-        ///
-        ///   Camera
-        ///      |
-        ///   [_maxOffset] ← near face (closer to camera)
-        ///      |
-        ///   [_minOffset] ← far face  (closer to wall)
-        ///      |
-        ///   [wall plane / quad]
-        /// </summary>
-        private (Vector3 Normal, float D)[] PrecomputeBoundingPlanes()
-        {
-            var planes = new (Vector3 Normal, float D)[6];
-
-            // Face 1: far face (wall side) — normal points TOWARD camera (+N direction)
-            // Points on this plane: quadCorners + _minOffset * N
-            Vector3 farFaceNormal = _wallNormal; // points away from wall toward camera
-            float farFaceD = _wallDistance+ _minOffset;
-            planes[0] = (farFaceNormal, farFaceD);
-
-            // Face 2: near face (camera side) — normal points TOWARD wall (-N direction)
-            // Points on this plane: quadCorners + _maxOffset * N
-            Vector3 nearFaceNormal = -_wallNormal;
-            float nearFaceD = -(_wallDistance+ _maxOffset);
-            planes[1] = (nearFaceNormal, nearFaceD);
-
-            // 4 side planes — one per quad edge
-            // For each edge (A→B), the side plane normal is perpendicular to the edge
-            // and points INWARD (toward the interior of the quad)
-            for (int i = 0; i < 4; i++)
-            {
-                Vector3 A = _quadCorners[i];
-                Vector3 B = _quadCorners[(i + 1) % 4];
-
-                Vector3 edge = B - A;
-
-                // Side plane normal = cross(edge, planeNormal), then normalize
-                // This gives a vector perpendicular to the edge, lying in the wall plane
-                Vector3 sideNormal = Vector3.Normalize(Vector3.Cross(edge, _wallNormal));
-
-                // Ensure it points INWARD: test against the opposite corner
-                Vector3 opposite = _quadCorners[(i + 2) % 4];
-                if (Vector3.Dot(sideNormal, opposite - A) < 0)
-                    sideNormal = -sideNormal;
-
-                float sideD = Vector3.Dot(sideNormal, A);
-                planes[2 + i] = (sideNormal, sideD);
-            }
-
-            return planes;
-        }
-        /// <summary>
-        /// For a single depth pixel (x, y), compute dmin and dmax where
-        /// the pixel ray intersects the extruded quad volume.
-        ///
-        /// Returns false if no intersection.
-        ///
-        /// The ray is: P(t) = t * rayDir, origin at camera (0,0,0)
-        /// where rayDir = ((x-cx)/fx, (y-cy)/fy, 1.0) — not normalized,
-        /// so t == Z (depth value in meters directly).
-        /// </summary>
-        private bool ComputeRayDepthRange(int x, int y, out int dmin, out int dmax)
-        {
-            dmin = int.MinValue;  
-            dmax = int.MaxValue;
-
-            // Ray direction (unnormalized: t = Z depth directly)
-            var rayDir = new Vector3(
-                (x - _cx) / _fx,
-                (y - _cy) / _fy,
-                1.0f
-            );
-
-            // Slab method: intersect ray with all 6 half-spaces
-            // For each plane: dot(N, P(t)) >= D  →  t * dot(N, rayDir) >= D
-            // → t >= D / dot(N,rd)  or  t <= D / dot(N,rd) depending on sign
-            foreach (var (normal, planeD) in _boundingPlanes)
-            {
-                float denom = Vector3.Dot(normal, rayDir);
-                float numer = planeD; // dot(N, origin)=0 since origin=(0,0,0)
-
-                if (MathF.Abs(denom) < 1e-6f)
-                {
-                    // Ray is parallel to this plane
-                    // Check if origin is on the correct side
-                    // dot(N, origin) >= planeD → 0 >= planeD
-                    if (0 < planeD)
-                    {
-                        // Origin is outside this half-space → no intersection possible
-                        dmin = dmax = 0;
-                        return false;
-                    }
-                    // else: origin inside this slab, no constraint from this plane
-                    continue;
-                }
-
-                float t = numer / denom;
-
-                if (denom > 0)
-                    // Ray enters this half-space at t (dmin moves up)
-                    dmin = (int) MathF.Max(dmin, t);
-                else
-                    // Ray exits this half-space at t (dmax moves down)
-                    dmax = (int) MathF.Min(dmax, t);
-
-                if (dmin > dmax)
-                    return false; // Empty intersection
-            }
-
-            // Clamp to positive depth (in front of camera)
-            dmin = (int) MathF.Max(dmin, 0f);
-
-            return dmin <= dmax && dmax > 0f;
-        }
-
-
-        /// <summary>
-        /// Precompute a lookup table: for each pixel (x,y), store (dmin, dmax).
-        /// Returns null for pixels whose ray doesn't intersect the volume.
-        /// Call this ONCE after calibration, reuse every frame.
-        /// </summary>
-        private void BuildLut()
-        {
-            Parallel.For(0, _fh, y =>
-            {
-                for (int x = 0; x < _fw; x++)
-                {
-                    if (ComputeRayDepthRange(x, y, out int dmin, out int dmax))
-                        _lut[x, y] = (dmin, dmax);
-                }
-            });
-        }
-
-        private (int MinX, int MaxX, int MinY, int MaxY) ComputeTightBounds()
-        {
-            int minX = int.MaxValue, maxX = int.MinValue;
-            int minY = int.MaxValue, maxY = int.MinValue;
-
-            for (int y = 0; y < _fh; y++)
-                for (int x = 0; x < _fw; x++)
-                {
-                    if (_lut[x, y] == null) continue;
-                    if (x < minX) minX = x;
-                    if (x > maxX) maxX = x;
-                    if (y < minY) minY = y;
-                    if (y > maxY) maxY = y;
-                }
-
-            return (
-                minX == int.MaxValue ? 0 : minX,
-                maxX == int.MinValue ? _fw - 1 : maxX,
-                minY == int.MaxValue ? 0 : minY,
-                maxY == int.MinValue ? _fh - 1 : maxY
-            );
-        }
-
-        public List<(int X, int Y)> CheckFrame(ushort[] depthImage)
-        {
-            var result = new List<(int X, int Y)>();
-
-            for (int y = _minY; y <= _maxY; y++)
-                for (int x = _minX; x <= _maxX; x++)
-                {
-                    var range = _lut[x, y];
-                    if (range == null) continue;
-
-                    float d = depthImage[y * _fw + x];
-
-                    if (d >= range.Value.DMin && d <= range.Value.DMax)
-                        result.Add((x, y));
-                }
-
-            return result;
-        }
-
-        public List<(int X, int Y)> CheckFrameParallel(ushort[] depthImage)
-        {
-            var result = new List<(int X, int Y)>();
-
-            Parallel.For(_minY, _maxY + 1,
-                () => new List<(int X, int Y)>(),
-                (y, _, localList) =>
-                {
-                    for (int x = _minX; x <= _maxX; x++)
-                    {
-                        var range = _lut[x, y];
-                        if (range == null) continue;
-
-                        float d = depthImage[y * _fw + x] / 1000f;
-
-                        if (d >= range.Value.DMin && d <= range.Value.DMax)
-                            localList.Add((x, y));
-                    }
-                    return localList;
-                },
-                localList => { lock (result) result.AddRange(localList); });
-
-            return result;
-        }
-
-    }
-
     public interface ITouchVolume
     {
-        Vector2 GetHomographyCoordinatesFrom2D(Vector2 center);
+        Vector2 GetRelativeScreenCoordinatesFrom2D(Vector2 center);
         Vector3 Get3DPointFromLocal2DPoint(Vector2 center);
         List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage);
     }
@@ -363,15 +36,77 @@ namespace CPRTouchVision.Models
         protected float _wallDistance;
         protected Vector3[] _quadCorners; // 4 corners on wall plane in 3D
 
+        //
+        // Offsets toward camera
+        // in millimeters
+        //
+        protected float _minOffset;
+        protected float _maxOffset;
+        //
+        // Frame size
+        //
+        protected int _frameWidth;
+        protected int _frameHeight;
+
+        //
+        // Local coordinate system on the wall
+        //
         protected Vector3 _origin;
         protected Vector3 _uAxis, _vAxis;
-        protected Vector2[] _quadCorners2D;
+        protected Vector2[] _quadCorners2D; // 4 corners on wall plane in 2D local coordinates
 
-        public abstract Vector2 GetHomographyCoordinatesFrom2D(Vector2 center);
+        protected Mat _homographyProjectionToScreen;
+
+        protected void Init(
+            Vector3 wallNormal,
+            float wallDistance,
+            Vector3[] quadCorners,
+            float minOffset, float maxOffset,
+            int frameWidth, int frameHeight)
+        {
+            _wallNormal = wallNormal;
+            _wallDistance = wallDistance;
+            _frameWidth = frameWidth;
+            _frameHeight = frameHeight;
+            _quadCorners = quadCorners;
+            _minOffset = minOffset;
+            _maxOffset = maxOffset;
+            _quadCorners2D = BuildQuadCorners2D(quadCorners, out _origin, out _uAxis, out _vAxis);
+            _homographyProjectionToScreen = GetHomographyToRelativeScreen();
+        }
+
+        //
+        // Compute homography that maps the quadrilateral defined by _quadCorners2D to a unit square (0,0)-(1,1).
+        // This homography can be used to map any point in the local 2D coordinate system to normalized coordinates relative to the quadrilateral.
+        //
+        protected Mat GetHomographyToRelativeScreen()
+        {
+            Point2f[] srcPts = new[] {
+                new Point2f(_quadCorners2D[0].X, _quadCorners2D[0].Y),
+                new Point2f(_quadCorners2D[1].X, _quadCorners2D[1].Y),
+                new Point2f(_quadCorners2D[2].X, _quadCorners2D[2].Y),
+                new Point2f(_quadCorners2D[3].X, _quadCorners2D[3].Y)
+            };
+            Point2f[] dstPts = new[] {
+                new Point2f(0f, 0f),
+                new Point2f(1f, 0f),
+                new Point2f(1f, 1f),
+                new Point2f(0f, 1f)
+            };
+            return Cv2.GetPerspectiveTransform(srcPts, dstPts);
+        }
+
         public abstract Vector3 Get3DPointFromLocal2DPoint(Vector2 center);
         public abstract List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage);
 
-        protected static Vector2[] BuildQuadCorners2D(
+        public Vector2 GetRelativeScreenCoordinatesFrom2D(Vector2 uv)
+        {
+            Point2f projected2D = new(uv.X, uv.Y);
+            Point2f[] mapped = Cv2.PerspectiveTransform(new[] { projected2D }, _homographyProjectionToScreen);
+            return new(mapped[0].X, mapped[0].Y);
+        }
+
+        protected Vector2[] BuildQuadCorners2D(
             Vector3[] quadCorners,
             out Vector3 origin,
             out Vector3 uAxis,
@@ -407,17 +142,7 @@ namespace CPRTouchVision.Models
 
             for (int i = 0; i < 4; i++)
             {
-                Vector3 local =
-                    quadCorners[i] - origin;
-
-                float u =
-                    Vector3.Dot(local, uAxis);
-
-                float v =
-                    Vector3.Dot(local, vAxis);
-
-                quadCorners2D[i] =
-                    new Vector2(u, v);
+                quadCorners2D[i] = PointToUV(quadCorners[i]);
             }
 
             return quadCorners2D;
@@ -474,8 +199,8 @@ namespace CPRTouchVision.Models
             Vector3 local = point - _origin;
 
             return new Vector2(
-                Vector3.Dot(local, _uAxis),
-                Vector3.Dot(local, _vAxis));
+                Vector3.Dot(local, _uAxis),     // coordinate along u 
+                Vector3.Dot(local, _vAxis));    // coordinate along v
         }
 
         protected bool IsPointProjectedToTouchZone(Vector3 point)
@@ -625,10 +350,10 @@ namespace CPRTouchVision.Models
             App.Log($"Filter points into Y => {_minSY} - {_maxSY}");
 #endif
             //Get the 2D source quad coordinates
-            var src0 = ProjectPlanePointToUV(_origin); // should be (0,0)
-            var src1 = ProjectPlanePointToUV(Polygon[1].World);
-            var src2 = ProjectPlanePointToUV(Polygon[2].World);
-            var src3 = ProjectPlanePointToUV(Polygon[3].World);
+            var src0 = PointToUV(_origin); // should be (0,0)
+            var src1 = PointToUV(Polygon[1].World);
+            var src2 = PointToUV(Polygon[2].World);
+            var src3 = PointToUV(Polygon[3].World);
             // prepare arrays of Point2f
             Point2f[] srcPts = new[] {
                 new Point2f(src0.X, src0.Y),
@@ -943,25 +668,13 @@ namespace CPRTouchVision.Models
             var distanceToPlane = Vector3.Dot(_wallNormal, point) + _wallDistance;
             return point - _wallNormal * distanceToPlane;
         }
-        private Vector2 ProjectPlanePointToUV(Vector3 P)
-        {
-            Vector3 r = P - _origin;
-            float s = Vector3.Dot(r, _uAxis); // coordinate along u 
-            float t = Vector3.Dot(r, _vAxis); // coordinate along v
-            return new Vector2(s, t);
-        }
+        
 
         public  Vector2 GetHomographyCoordinatesFrom3D(Vector3 point)
         {
             var projectedPoint = GetProjectionToPlane(point);
-            var point2D = ProjectPlanePointToUV(projectedPoint);
-            return GetHomographyCoordinatesFrom2D(point2D);
-        }
-        public override Vector2 GetHomographyCoordinatesFrom2D(Vector2 point2D)
-        {
-            Point2f projected2D = new(point2D.X, point2D.Y);
-            Point2f[] mapped = Cv2.PerspectiveTransform(new[] { projected2D }, _homography);
-            return new(mapped[0].X, mapped[0].Y);
+            var point2D = PointToUV(projectedPoint);
+            return GetRelativeScreenCoordinatesFrom2D(point2D);
         }
 
         public override Vector3 Get3DPointFromLocal2DPoint(Vector2 point)
@@ -1013,37 +726,12 @@ namespace CPRTouchVision.Models
         private readonly float _cy;
 
         //
-        // Frame size
-        //
-
-        private readonly int _fw;
-        private readonly int _fh;
-
-        //
         // Plane
         // dot(N,P)+D=0
         //
 
-        private readonly Vector3 _wallNormal;
-        private readonly float _wallD;
-
         public Plane WallPlane =>
-            new(_wallNormal, _wallD);
-
-        //
-        // Offsets toward camera
-        // in millimeters
-        //
-
-        private readonly float _minOffset;
-        private readonly float _maxOffset;
-
-        //
-        // Quad corners ON WALL
-        // in native depth space
-        //
-
-        private readonly Vector3[] _quadCorners;
+            new(_wallNormal, _wallDistance);
 
         //
         // Convex volume planes
@@ -1118,9 +806,8 @@ namespace CPRTouchVision.Models
             int fh,
             Calibration calibration)
         {
-            _fw = fw;
-            _fh = fh;
 
+            Init(wallNormal, wallD, quadCorners, minOffset, maxOffset, fw, fh);
             var intr =
                 calibration
                     .DepthCameraCalibration
@@ -1132,15 +819,6 @@ namespace CPRTouchVision.Models
             _fx = intr.Fx;
             _fy = intr.Fy;
 
-            _wallNormal = Vector3.Normalize(wallNormal);
-
-            _wallD = wallD;
-
-            _minOffset = minOffset;
-            _maxOffset = maxOffset;
-
-            _quadCorners = quadCorners;
-
 #if DEBUG || TEST
             App.Log($"Creating LutTouchVolume with _wallNormal={_wallNormal}, wallD={wallD}, minOffset={minOffset}, maxOffset={maxOffset}");
             foreach (var p in _quadCorners)
@@ -1150,9 +828,7 @@ namespace CPRTouchVision.Models
 
             _planes = BuildBoundingPlanes();
 
-            _quadCorners2D = BuildQuadCorners2D(_quadCorners, out _origin, out _uAxis, out _vAxis);
-
-            _lut = new DepthRange?[_fw * _fh];
+            _lut = new DepthRange?[_frameWidth * _frameHeight];
         }
 
         //
@@ -1548,11 +1224,11 @@ namespace CPRTouchVision.Models
             int count = 0;
 
 #endif
-            Parallel.For(0, _fh, y =>
+            Parallel.For(0, _frameHeight, y =>
                 {
-                    int row = y * _fw;
+                    int row = y * _frameWidth;
 
-                    for (int x = 0; x < _fw; x++)
+                    for (int x = 0; x < _frameWidth; x++)
                     {
                         if (ComputeDepthRange(
                                 x, y,
@@ -1573,7 +1249,7 @@ namespace CPRTouchVision.Models
                     }
                 });
 #if DEBUG || TEST
-            App.Log($"LUT build complete. Valid pixels count: {count} out of {_fw * _fh}");
+            App.Log($"LUT build complete. Valid pixels count: {count} out of {_frameWidth * _frameHeight}");
 #endif
         }
 
@@ -1589,11 +1265,11 @@ namespace CPRTouchVision.Models
             int minY = int.MaxValue;
             int maxY = int.MinValue;
 
-            for (int y = 0; y < _fh; y++)
+            for (int y = 0; y < _frameHeight; y++)
             {
-                int row = y * _fw;
+                int row = y * _frameWidth;
 
-                for (int x = 0; x < _fw; x++)
+                for (int x = 0; x < _frameWidth; x++)
                 {
                     if (_lut[row + x] == null)
                         continue;
@@ -1606,17 +1282,13 @@ namespace CPRTouchVision.Models
                 }
             }
 
-            minX == int.MaxValue ? 0 : minX;
-                maxX == int.MinValue ? _fw - 1 : maxX,
-                minY == int.MaxValue ? 0 : minY,
-                maxY == int.MinValue ? _fh - 1 : maxY
+            minX = minX == int.MaxValue ? 0 : minX;
+            maxX = maxX == int.MinValue ? _frameWidth - 1 : maxX;
+            minY = minY == int.MaxValue ? 0 : minY;
+            maxY = maxY == int.MinValue ? _frameHeight - 1 : maxY;
 
-            return (
-                minX == int.MaxValue ? 0 : minX,
-                maxX == int.MinValue ? _fw - 1 : maxX,
-                minY == int.MaxValue ? 0 : minY,
-                maxY == int.MinValue ? _fh - 1 : maxY
-            );
+            return (minX, maxX, minY, maxY);
+
         }
 
         //
@@ -1630,7 +1302,7 @@ namespace CPRTouchVision.Models
 
             for (int y = _minY; y <= _maxY; y++)
             {
-                int row = y * _fw;
+                int row = y * _frameWidth;
 
                 for (int x = _minX; x <= _maxX; x++)
                 {
@@ -1668,11 +1340,6 @@ namespace CPRTouchVision.Models
             return result;
         }
 
-        public override Vector2 GetHomographyCoordinatesFrom2D(Vector2 center)
-        {
-            throw new NotImplementedException();
-        }
-
         public override Vector3 Get3DPointFromLocal2DPoint(Vector2 center)
         {
             throw new NotImplementedException();
@@ -1695,14 +1362,14 @@ namespace CPRTouchVision.Models
         {
             using var bmp =
                 new System.Drawing.Bitmap(
-                    _fw, _fh,
+                    _frameWidth, _frameHeight,
                     System.Drawing.Imaging.PixelFormat.Format24bppRgb);
 
-            for (int y = 0; y < _fh; y++)
+            for (int y = 0; y < _frameHeight; y++)
             {
-                int row = y * _fw;
+                int row = y * _frameWidth;
 
-                for (int x = 0; x < _fw; x++)
+                for (int x = 0; x < _frameWidth; x++)
                 {
                     bool valid =
                         _lut[row + x] != null;
@@ -1727,11 +1394,11 @@ namespace CPRTouchVision.Models
 
             sb.AppendLine("X,Y,DMin,DMax,Range");
 
-            for (int y = 0; y < _fh; y++)
+            for (int y = 0; y < _frameHeight; y++)
             {
-                int row = y * _fw;
+                int row = y * _frameWidth;
 
-                for (int x = 0; x < _fw; x++)
+                for (int x = 0; x < _frameWidth; x++)
                 {
                     var range = _lut[row + x];
 

@@ -875,8 +875,14 @@ namespace CPRTouchVision.Models
                                 throw new Exception($"Failed to convert color point ({p.SX}, {p.SY}) to depth space.");
                             }
                         }
+#if DEBUG || TEST
+                    Utilities.SaveCapturedFrame(
+                        _nativeDepthData,
+                        Utilities.GetPath("live_depth.bin"));
 
-                        _depthROIRequest.TrySetResult(result);
+                    App.Log($"Depth frame saved to live_depth.bin");
+#endif
+                    _depthROIRequest.TrySetResult(result);
                         ResetROIAttemps();
                     }
                     catch (Exception ex)
@@ -1598,13 +1604,7 @@ namespace CPRTouchVision.Models
             // Build stabilized native depth map
             //
 
-            ushort[] stableDepth =
-                new ushort[
-                    _depthWidth * _depthHeight];
-
-            ready.BuildDepthMap(
-                stableDepth,
-                useMedian: true);
+            ushort[] stableDepth = ready.BuildDepthMap(useMedian: true);
 
             SetInfoMessage(Constants.FittingPlane);
 
@@ -1616,11 +1616,11 @@ namespace CPRTouchVision.Models
             var points =
                 new ConcurrentBag<Vector3>();
 
-            Parallel.For(0, _depthHeight, y =>
+            Parallel.For(0, ready.GetROIHeight(), y =>
             {
-                int row = y * _depthWidth;
+                int row = y * ready.GetROIWidth();
 
-                for (int x = 0; x < _depthWidth; x += 2)
+                for (int x = 0; x < ready.GetROIWidth(); x += 2)
                 {
                     int i = row + x;
 
@@ -1631,7 +1631,7 @@ namespace CPRTouchVision.Models
 
                     var world =
                         _calibration.Convert2DTo3D(
-                            new(x, y), d,
+                            new(ready.GetFrameXByRoiX(x), ready.GetFrameYByRoiY(y)), d,
                             CalibrationGeometry.Depth,
                             CalibrationGeometry.Depth);
 
@@ -1662,6 +1662,9 @@ namespace CPRTouchVision.Models
                 await Task.Run(() =>
                     fitter.FitPlane(pointList));
 
+#if DEBUG || TEST
+             App.Log($"Plane fitting result: success = {plane.Success}, normal = {plane.Normal}, d = {plane.D}, inliers = {plane.InliersCount}, outliers = {plane.Outliers.Count}");
+#endif
             if (!plane.Success)
             {
                 IsTouchZoneDefining = false;
@@ -1731,9 +1734,42 @@ namespace CPRTouchVision.Models
             }
 
 #if DEBUG || TEST || MOCK
+            var depthFrame = Utilities.ReadCapturedFrame(
+                        Utilities.GetPath("live_depth.bin"));
+            int diff10 = 0, diff20 = 0, diff30 = 0, diff50 = 0, diffAbove50 = 0;
+            int negDiff10 = 0, negDiff20 = 0, negDiff30 = 0, negDiff50 = 0, negDiffAbove50 = 0;
+            for (int i = 0; i < stableDepth.Length; i++)
+            {
+                int diff = stableDepth[i] - depthFrame[ready.GetFrameIndexByRoiIndex(i)];
+                switch (Math.Abs(diff))
+                {
+                    case int d when d <= 10:
+                        if (diff > 0) diff10++; else negDiff10++;
+                        break;
+                    case int d when d <= 20:
+                        if (diff > 0) diff20++; else negDiff20++;
+                        break;
+                    case int d when d <= 30:
+                        if (diff > 0) diff30++; else negDiff30++;
+                        break;
+                    case int d when d <= 50:
+                        if (diff > 0) diff50++; else negDiff50++;
+                        break;
+                    default:
+                        if (diff > 0) diffAbove50++; else negDiffAbove50++;
+                        break;
+                }
+
+            }
+            App.Log($"Depth map difference distribution: " +
+                $"diff <= 10mm: {diff10} pixels, diff <= 20mm: {diff20} pixels, diff <= 30mm: {diff30} pixels, diff <= 50mm: {diff50} pixels, diff > 50mm: {diffAbove50} pixels. " +
+                $"Negative differences (stableDepth < original depth): diff <= 10mm: {negDiff10} pixels, diff <= 20mm: {negDiff20} pixels, diff <= 30mm: {negDiff30} pixels, diff <= 50mm: {negDiff50} pixels, diff > 50mm: {negDiffAbove50} pixels.");
 
             var filePath = Utilities.GetPath(Constants.StableDepthFile);
             Utilities.SaveCapturedFrame(stableDepth, filePath);
+
+            var filePath2 = Utilities.GetPath("depth_image.bin");
+            Utilities.SaveCapturedFrame(_depthData, filePath2);
 
             App.Log("Depth-space points are saved to: " + filePath);
 
