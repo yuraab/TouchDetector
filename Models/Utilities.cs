@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
@@ -119,9 +120,30 @@ namespace CPRTouchVision.Models
             return frameData;
         }
 
+        public static Mat CreateHomography(
+            Vector2[] uvCorners,
+            int screenWidth,
+            int screenHeight)
+        {
+            Point2f[] src =
+            {
+                new(uvCorners[0].X, uvCorners[0].Y),
+                new(uvCorners[1].X, uvCorners[1].Y),
+                new(uvCorners[2].X, uvCorners[2].Y),
+                new(uvCorners[3].X, uvCorners[3].Y)
+            };
 
+            Point2f[] dst =
+            {
+                new(0, 0),
+                new(screenWidth, 0),
+                new(screenWidth, screenHeight),
+                new(0, screenHeight)
+            };
+
+            return Cv2.GetPerspectiveTransform(src, dst);
+        }
     }
-
     public interface ICalibrationProgress
     {
         void OnStatus(string message);
@@ -129,4 +151,5 @@ namespace CPRTouchVision.Models
         void OnCompleted(Point[] points);
         void OnFailed(string reason);
     }
+
 }
