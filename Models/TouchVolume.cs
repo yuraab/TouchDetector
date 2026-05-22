@@ -28,7 +28,7 @@ namespace CPRTouchVision.Models
         Vector2 GetRelativeScreenCoordinatesFrom2D(Vector2 center);
         Vector3 Get3DPointFromLocal2DPoint(Vector2 center);
         List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage);
-        List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage);
+        List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage, long frameId);
         int GetFrameWidth();
         int GetFrameHeight();
 
@@ -226,7 +226,7 @@ namespace CPRTouchVision.Models
                        _quadCorners2D[3]);
         }
 
-        public abstract List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage);
+        public abstract List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage, long frameId);
     }
 
     public class TouchVolume: BaseTouchVolume
@@ -690,7 +690,7 @@ namespace CPRTouchVision.Models
             return _origin + _uAxis * point.X + _vAxis * point.Y;
         }
 
-        public override List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage)
+        public override List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage, long frameId)
         {
             throw new NotImplementedException();
         }
@@ -1438,7 +1438,7 @@ namespace CPRTouchVision.Models
             return result;
         }
 
-        public override List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage)
+        public override List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage, long frameId)
         {
             var result =
                 new List<int>(512);
@@ -1463,7 +1463,9 @@ namespace CPRTouchVision.Models
                 }
             }
 
-            App.Log($"Thread={Environment.CurrentManagedThreadId}, InsideRange={insideRange}");
+#if DEBUG || TEST2
+            App.Log($"Thread={Environment.CurrentManagedThreadId}, FrameId={frameId}, InsideRange={insideRange}");
+#endif
 
             return result;
         }

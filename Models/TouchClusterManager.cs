@@ -385,7 +385,11 @@ namespace CPRTouchVision.Models
         public Vector2 _normalizedCenter;
         private float _radius;
         private int _count;
+        private readonly float _width;
+        private readonly float _height;
 
+        public float Width => _width;
+        public float Height => _height;
         public Vector2 Center => _center;        // 2D center point of the cluster
                 // 2D center point of the cluster
 
@@ -404,11 +408,13 @@ namespace CPRTouchVision.Models
                 _center = Vector2.Zero;
                 _normalizedCenter = Vector2.Zero;
                 _radius = 0f;
+                _width = 0f;
+                _height = 0f;
             }
             else
             {
                 _center = CalculateCenter();
-                _radius = CalculateRadius();
+                (_width, _height, _radius) = CalculateDimensions();
                 _count = points.Count;
             }
 
@@ -423,16 +429,27 @@ namespace CPRTouchVision.Models
             return sum / _points.Count;
         }
 
-        private float CalculateRadius()
+        private (float Width, float Height, float Radius) CalculateDimensions()
         {
+            float minX = float.MaxValue;
+            float maxX = float.MinValue;
+
+            float minY = float.MaxValue;
+            float maxY = float.MinValue;
+
             float maxDist = 0f;
             foreach (var p in _points)
             {
                 var dist = Vector2.Distance(p, _center);
                 if (dist > maxDist)
                     maxDist = dist;
+                if (p.X < minX) minX = p.X;
+                if (p.X > maxX) maxX = p.X;
+
+                if (p.Y < minY) minY = p.Y;
+                if (p.Y > maxY) maxY = p.Y;
             }
-            return maxDist;
+            return (maxX - minX + 1, maxY - minY + 1, maxDist);
         }
 
         public override string ToString()

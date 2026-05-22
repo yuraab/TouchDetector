@@ -629,8 +629,18 @@ namespace CPRTouchVision.Models
             var time = DateTime.UtcNow;
             foreach (var c in e.Clusters) 
             {
+                
                 if (c.NormalizedCenter.X < 0 || c.NormalizedCenter.X > 1) continue;
                 if (c.NormalizedCenter.Y < 0 || c.NormalizedCenter.Y > 1) continue;
+
+                /*
+                OBSharp.Float2 center = new OBSharp.Float2(0, 0);
+                
+#if DEBUG || TEST
+                string message = $"[id:{idCounter} Local Center:({c.Center}) Screen Center:({c.NormalizedCenter.X * _fw},{c.NormalizedCenter.Y * _fh}) normalizedCenter:({c.NormalizedCenter.X}:{c.NormalizedCenter.Y}) r:{c.Radius:F2}]";
+                App.Log(message);
+#endif
+                
                 OBSharp.Float2 center = new OBSharp.Float2(0,0);
                 if (c.Center3D == Vector3.Zero)
                 {
@@ -639,27 +649,27 @@ namespace CPRTouchVision.Models
 
                 var center2D = _calibration.Convert3DTo2D(new(c.Center3D.X, c.Center3D.Y, c.Center3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
                 center = (center2D.HasValue) ? center2D.Value : new OBSharp.Float2(0,0);
-
+                
+                center = new OBSharp.Float2(c.NormalizedCenter.X * _fw, c.NormalizedCenter.Y * _fh);
                 var right = GetScreenPointFromPlanePoint(new (c.Center.X + c.Radius, c.Center.Y)); // right
                 var left =  GetScreenPointFromPlanePoint(new (c.Center.X - c.Radius, c.Center.Y)); // left
                 var down =  GetScreenPointFromPlanePoint(new (c.Center.X, c.Center.Y + c.Radius)); // up
                 var up =    GetScreenPointFromPlanePoint(new (c.Center.X, c.Center.Y - c.Radius)); // down
-
-
+                */
                 _touches.Add(new TouchEvent
                 {
                     Id = idCounter++,
-                    X = center.X,
-                    Y = center.Y,
+                    X = c.NormalizedCenter.X * _fw,
+                    Y = c.NormalizedCenter.Y * _fh,
                     NormalizedX = c.NormalizedCenter.X,
                     NormalizedY = c.NormalizedCenter.Y,
-                    ScreenRadius = (Vector2.Distance(right, left) + Vector2.Distance(up, right)) / 2f,
-                    Radius = c.Radius,
+                    ScreenRadius = 0f, // 
+                    Radius = 0f,
                     Timestamp = time
                 });
 #if DEBUG || TEST
                 var t = _touches.Last();
-                string message = $"[id:{t.Id} Local Center:({c.Center}) Screen Center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY}) r:{t.Radius:F2}]";
+                string message = $"[id:{t.Id} Screen Center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY})]";
                 App.Log(message);
 #endif
 

@@ -27,6 +27,7 @@ namespace CPRTouchVision.Models
         private int _maxQueueSize;
 
         private ushort[] sample;
+        private long _frameCounter;
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
 
@@ -108,39 +109,35 @@ namespace CPRTouchVision.Models
         {
             while (_isRunning)
             {
+                (ushort[] image, CalibrationGeometry geometry, DateTime time)? item = null;
+
                 while (true)
                 {
-                    (ushort[] image, CalibrationGeometry geometry, DateTime time)? item = null;
-
                     lock (_queueLock)
                     {
                         if (_imageQueue.Count > 0)
                         {
                             item = _imageQueue.Dequeue();
                         }
-                        else
-                        {
-                            break;
-                        }
 
-                        if (item != null)
-                        {
-                            try
-                            {
-                                var (image, geometry, time) = item.Value;
-
-                                // Process the image
-                                ProcessImage(image, time);
-                            }
-                            catch (Exception ex)
-                            {
-                                Debug.WriteLine($"[TouchTracker] Processing failed: {ex}");
-                            }
-                        }
-                        else
+                        if (item == null)
                         {
                             Thread.Sleep(1); // avoid tight loop when queue is empty
+                            continue;
                         }
+
+                        try
+                        {
+                            var (image, geometry, time) = item.Value;
+
+                            // Process the image
+                            ProcessImage(image, time);
+                        }
+                        catch (Exception ex)
+                        {
+                            App.Log($"[TouchTracker] Processing failed: {ex}");
+                        }
+
                     }
                 }
             }
@@ -151,9 +148,11 @@ namespace CPRTouchVision.Models
         {
             List<Touch2DCluster> clusters = new List<Touch2DCluster>();
 
+            long frameId =Interlocked.Increment(ref _frameCounter);
+
             var sw = Stopwatch.StartNew();
 
-            var points = Extract2DPointsIndicesInsideVolume(image);
+            var points = _volume.ExtractProjectedPointIndicesInsideVolumeFromImage(image, frameId);//Extract2DPointsIndicesInsideVolume(image);
 
             //var points = Extract2DPointsInsideVolume(image);
             double extractMs = sw.Elapsed.TotalMilliseconds;
@@ -182,13 +181,20 @@ namespace CPRTouchVision.Models
                 mappingMs = sw.Elapsed.TotalMilliseconds;
 
                 var frame = new TouchFrame(clusters);
-                TouchFrameReady?.Invoke(this, frame);
+                try
+                {
+                    TouchFrameReady?.Invoke(this, frame);
+                }
+                catch (Exception ex)
+                {
+                    App.Log(ex.ToString());
+                }
             }
 
-#if DEBUG || TEST
+#if DEBUG2 || TEST2
             if (points.Count > 0)
             {
-                App.Log($"Filtered points count: {points.Count}");
+                App.Log($"Thread={Environment.CurrentManagedThreadId} Filtered points count: {points.Count}");
             }
 
 
@@ -216,9 +222,9 @@ namespace CPRTouchVision.Models
             return _volume.ExtractProjectedPointsInsideVolumeFromImage(depthImage);
         }
 
-        private List<int> Extract2DPointsIndicesInsideVolume(ushort[] depthImage)
+        private List<int> Extract2DPointsIndicesInsideVolume(ushort[] depthImage, long frameId)
         {
-            return _volume.ExtractProjectedPointIndicesInsideVolumeFromImage(depthImage);
+            return _volume.ExtractProjectedPointIndicesInsideVolumeFromImage(depthImage, frameId);
         }
 
         public void Stop()
