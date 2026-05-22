@@ -539,4 +539,270 @@ namespace CPRTouchVision.Models
         }
 
     }
+
+    public sealed class ConnectedComponentClusterManager
+    {
+        private readonly int _frameWidth;
+        private readonly int _frameHeight; 
+        private readonly int _minPoints;
+        
+        public ConnectedComponentClusterManager(
+            int frameWidth,
+            int frameHeight,
+            int minPoints = 4)
+        {
+            _frameWidth = frameWidth;
+            _frameHeight = frameHeight;
+            _minPoints = minPoints;
+        }
+
+
+        public List<Touch2DCluster> DetectClusters(
+            List<(int X, int Y)> points)
+        {
+            var result =
+                new List<Touch2DCluster>();
+
+            if (points.Count < _minPoints)
+                return result;
+
+            //
+            // Build foreground lookup
+            //
+
+            var foreground =
+                new HashSet<int>(points.Count);
+
+            foreach (var p in points)
+            {
+                foreground.Add(
+                    p.Y * _frameWidth + p.X);
+            }
+
+            //
+            // Visited pixels
+            //
+
+            var visited =
+                new HashSet<int>(points.Count);
+
+            //
+            // BFS
+            //
+
+            var queue =
+                new Queue<int>();
+
+            foreach (var start in foreground)
+            {
+                if (!visited.Add(start))
+                    continue;
+
+                queue.Clear();
+                queue.Enqueue(start);
+
+                var clusterPoints =
+                    new List<Vector2>();
+
+                while (queue.Count > 0)
+                {
+                    int idx =
+                        queue.Dequeue();
+
+                    int y =
+                        idx / _frameWidth;
+
+                    int x =
+                        idx - y * _frameWidth;
+
+                    clusterPoints.Add(
+                        new Vector2(x, y));
+
+                    //
+                    // 8-connected neighbors
+                    //
+
+                    Visit(
+                        idx - _frameWidth - 1,
+                        foreground,
+                        visited,
+                        queue);
+
+                    Visit(
+                        idx - _frameWidth,
+                        foreground,
+                        visited,
+                        queue);
+
+                    Visit(
+                        idx - _frameWidth + 1,
+                        foreground,
+                        visited,
+                        queue);
+
+                    Visit(
+                        idx - 1,
+                        foreground,
+                        visited,
+                        queue);
+
+                    Visit(
+                        idx + 1,
+                        foreground,
+                        visited,
+                        queue);
+
+                    Visit(
+                        idx + _frameWidth - 1,
+                        foreground,
+                        visited,
+                        queue);
+
+                    Visit(
+                        idx + _frameWidth,
+                        foreground,
+                        visited,
+                        queue);
+
+                    Visit(
+                        idx + _frameWidth + 1,
+                        foreground,
+                        visited,
+                        queue);
+                }
+
+                if (clusterPoints.Count >= _minPoints)
+                {
+                    result.Add(
+                        new Touch2DCluster(
+                            clusterPoints));
+                }
+            }
+
+            return result;
+        }
+
+        public List<Touch2DCluster> DetectClusters(
+            List<int> points)
+        {
+            var result =
+                new List<Touch2DCluster>();
+
+            if (points.Count < _minPoints)
+                return result;
+
+            var foreground =
+                new HashSet<int>(points);
+
+            //
+            // Visited pixels
+            //
+
+            var visited =
+                new HashSet<int>(points.Count);
+
+            //
+            // BFS
+            //
+
+            var queue =
+                new Queue<int>();
+
+            foreach (var start in foreground)
+            {
+                if (!visited.Add(start))
+                    continue;
+
+                queue.Clear();
+                queue.Enqueue(start);
+
+                var clusterPoints =
+                    new List<Vector2>();
+
+                while (queue.Count > 0)
+                {
+                    int idx =
+                        queue.Dequeue();
+
+                    int x =
+                        idx % _frameWidth;
+
+                    int y =
+                        idx / _frameWidth;
+
+                    clusterPoints.Add(
+                        new Vector2(x, y));
+
+                    //
+                    // 8-connected neighbors
+                    //
+
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        int ny = y + dy;
+
+                        if (ny < 0 ||
+                            ny >= _frameHeight)
+                        {
+                            continue;
+                        }
+
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            int nx = x + dx;
+
+                            if (dx == 0 && dy == 0)
+                                continue;
+
+                            if (nx < 0 ||
+                                nx >= _frameWidth)
+                            {
+                                continue;
+                            }
+
+                            int neighbor =
+                                ny * _frameWidth + nx;
+
+                            if (!foreground.Contains(neighbor))
+                                continue;
+
+                            if (!visited.Add(neighbor))
+                                continue;
+
+                            queue.Enqueue(neighbor);
+                        }
+                    }
+                }
+
+                if (clusterPoints.Count >= _minPoints)
+                {
+                    result.Add(
+                        new Touch2DCluster(
+                            clusterPoints));
+                }
+            }
+
+
+            return result;
+        }
+
+
+        private static void Visit(
+            int neighbor,
+            HashSet<int> foreground,
+            HashSet<int> visited,
+            Queue<int> queue)
+        {
+            if (!foreground.Contains(neighbor))
+                return;
+
+            if (!visited.Add(neighbor))
+                return;
+
+            queue.Enqueue(neighbor);
+        }
+    }
+
+
+
 }

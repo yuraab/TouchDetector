@@ -28,6 +28,10 @@ namespace CPRTouchVision.Models
         Vector2 GetRelativeScreenCoordinatesFrom2D(Vector2 center);
         Vector3 Get3DPointFromLocal2DPoint(Vector2 center);
         List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage);
+        List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage);
+        int GetFrameWidth();
+        int GetFrameHeight();
+
     }
 
     public abstract class BaseTouchVolume : ITouchVolume
@@ -47,6 +51,8 @@ namespace CPRTouchVision.Models
         //
         protected int _frameWidth;
         protected int _frameHeight;
+        public int GetFrameWidth() { return _frameWidth; }
+        public int GetFrameHeight() { return _frameHeight; }
 
         //
         // Local coordinate system on the wall
@@ -219,6 +225,8 @@ namespace CPRTouchVision.Models
                        _quadCorners2D[2],
                        _quadCorners2D[3]);
         }
+
+        public abstract List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage);
     }
 
     public class TouchVolume: BaseTouchVolume
@@ -682,6 +690,11 @@ namespace CPRTouchVision.Models
             return _origin + _uAxis * point.X + _vAxis * point.Y;
         }
 
+        public override List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage)
+        {
+            throw new NotImplementedException();
+        }
+
         /*
         public List<Float2> ExtractProjectedPointsInsideVolume(ushort[] depthImage)
         {
@@ -754,6 +767,8 @@ namespace CPRTouchVision.Models
         private int _minY;
         private int _maxY;
 
+        private List<int> _validIndices;
+        private List<LutPixel> _pixels;
         //
         // Ready
         //
@@ -787,6 +802,29 @@ namespace CPRTouchVision.Models
                 ushort min,
                 ushort max)
             {
+                Min = min;
+                Max = max;
+            }
+        }
+
+        private readonly struct LutPixel
+        {
+            public readonly int Index;
+            public readonly int X;
+            public readonly int Y;
+            public readonly ushort Min;
+            public readonly ushort Max;
+
+            public LutPixel(
+                int index,
+                int x,
+                int y,
+                ushort min,
+                ushort max)
+            {
+                Index = index;
+                X = x;
+                Y = y;
                 Min = min;
                 Max = max;
             }
@@ -861,6 +899,7 @@ namespace CPRTouchVision.Models
             {
                 progress?.Report("Building LUT...");
                 v.BuildLut();
+                v.BuildShortLut();
 
                 progress?.Report("Computing bounds...");
                 (
@@ -871,10 +910,10 @@ namespace CPRTouchVision.Models
                 ) = v.ComputeBounds();
 #if DEBUG || TEST
                 App.Log($"Computed bounds: X={v._minX}-{v._maxX}, Y={v._minY}-{v._maxY}");  
-                v.SaveLutToCsv(Utilities.GetPath("lut.csv"));
-                App.Log("LUT is saved to lut.csv");
+                // v.SaveLutToCsv(Utilities.GetPath("lut.csv"));
+                //App.Log("LUT is saved to lut.csv");
 
-                v.SaveLutMask(Utilities.GetPath("lut_mask.png"));
+                //v.SaveLutMask(Utilities.GetPath("lut_mask.png"));
                 App.Log("LUT is saved to lut_mask.png");
 #endif
                 v.IsReady = true;
@@ -1220,36 +1259,77 @@ namespace CPRTouchVision.Models
 
         private void BuildLut()
         {
-#if DEBUG || TEST
-            int count = 0;
-
-#endif
             Parallel.For(0, _frameHeight, y =>
                 {
                     int row = y * _frameWidth;
 
                     for (int x = 0; x < _frameWidth; x++)
                     {
+                        int index = row + x;
                         if (ComputeDepthRange(
                                 x, y,
                                 out ushort dmin,
                                 out ushort dmax))
                         {
-#if DEBUG || TEST
-                            count++;
-
-#endif
-                            _lut[row + x] =
+                            _lut[index] =
                                 new DepthRange(dmin, dmax);
                         }
                         else
                         {
-                            _lut[row + x] = null;
+                            _lut[index] = null;
                         }
                     }
                 });
+
+            // Build list of valid indices for faster iteration later
+            _validIndices = new List<int>();
+
+            for (int i = 0; i < _lut.Length; i++)
+            {
+                if (_lut[i] != null)
+                    _validIndices.Add(i);
+            }
+#if TEST
+            App.Log($"LUT build complete. Valid pixels count: {_validIndices.Count} out of {_frameWidth * _frameHeight}");
+#endif
+        }
+
+        private void BuildShortLut()
+        {
+            var pixels =
+                new ConcurrentBag<LutPixel>();
+
+            Parallel.For(0, _frameHeight, y =>
+            {
+                int row = y * _frameWidth;
+
+                for (int x = 0; x < _frameWidth; x++)
+                {
+                    int index = row + x;
+
+                    if (ComputeDepthRange(
+                            x,
+                            y,
+                            out ushort dmin,
+                            out ushort dmax))
+                    {
+                        pixels.Add(
+                            new LutPixel(
+                                index,
+                                x,
+                                y,
+                                dmin,
+                                dmax));
+                    }
+                }
+            });
+
+            _pixels = pixels.OrderBy(p => p.Index).ToList();
+
+
 #if DEBUG || TEST
-            App.Log($"LUT build complete. Valid pixels count: {count} out of {_frameWidth * _frameHeight}");
+            App.Log(
+                $"LUT build complete. Valid pixels count: {_pixels.Count} out of {_frameWidth * _frameHeight}");
 #endif
         }
 
@@ -1298,7 +1378,7 @@ namespace CPRTouchVision.Models
         public List<(int X, int Y)>ExtractPixels(ushort[] depthImage)
         {
             var result =
-                new List<(int X, int Y)>();
+                new List<(int X, int Y)>(1024);
 
             for (int y = _minY; y <= _maxY; y++)
             {
@@ -1306,17 +1386,17 @@ namespace CPRTouchVision.Models
 
                 for (int x = _minX; x <= _maxX; x++)
                 {
-
+                    int idx = row + x;
                     var range =
-                        _lut[row + x];
+                        _lut[idx];
 
 
                     if (range == null)
                         continue;
 
                     ushort d =
-                        depthImage[row + x];
-
+                        depthImage[idx];
+/*
 #if DEBUG || TEST
                     if (x == (_minX + _maxX) / 2 && y == (_minY + _maxY) / 2)
                     {
@@ -1324,7 +1404,7 @@ namespace CPRTouchVision.Models
                         App.Log($"Center LUT={range.Value.Min}-{range.Value.Max}");
                     }
 #endif
-
+*/
 
                     if (d == 0)
                         continue;
@@ -1345,7 +1425,7 @@ namespace CPRTouchVision.Models
             throw new NotImplementedException();
         }
 
-        public override List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage)
+        public List<Float2> ExtractProjectedPointsInsideVolumeFromImage2(ushort[] depthImage)
         {
             var pixels = ExtractPixels(depthImage);
             var result = new List<Float2>();
@@ -1354,6 +1434,36 @@ namespace CPRTouchVision.Models
             {
                 result.Add(new Float2(x, y));
             }
+
+            return result;
+        }
+
+        public override List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage)
+        {
+            var result =
+                new List<int>(512);
+
+            int validDepth = 0;
+            int insideRange = 0;
+
+            foreach (var p in _pixels)
+            {
+                ushort d =
+                    depthImage[p.Index];
+
+                if (d == 0)
+                    continue;
+
+                validDepth++;
+
+                if (d >= p.Min && d <= p.Max)
+                {
+                    insideRange++;
+                    result.Add(p.Index);
+                }
+            }
+
+            App.Log($"Thread={Environment.CurrentManagedThreadId}, InsideRange={insideRange}");
 
             return result;
         }
@@ -1429,6 +1539,28 @@ namespace CPRTouchVision.Models
                 Encoding.UTF8);
         }
 
+        public override List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage)
+        {
+            var result =
+                new List<Float2>(512);
+
+            foreach (var p in _pixels)
+            {
+                ushort d =
+                    depthImage[p.Index];
+
+                if (d == 0)
+                    continue;
+
+                if (d >= p.Min &&
+                    d <= p.Max)
+                {
+                    result.Add(new Float2(p.X, p.Y) );
+                }
+            }
+
+            return result;
+        }
     }
 
 

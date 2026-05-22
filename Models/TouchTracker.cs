@@ -11,7 +11,8 @@ namespace CPRTouchVision.Models
     public sealed class TouchTracker_ : IDisposable
     {
         private readonly ITouchVolume _volume;
-        private readonly Touch2DClusterManager _clusterManager;
+        //private readonly Touch2DClusterManager _clusterManager;
+        private readonly ConnectedComponentClusterManager _clusterManager;
         private readonly ExclusionZoneManager_? _exclusionManager;
 
         private Thread _thread;
@@ -37,7 +38,9 @@ namespace CPRTouchVision.Models
         {
             _volume = volume;;
 
-            _clusterManager = new Touch2DClusterManager();
+            _clusterManager = new ConnectedComponentClusterManager(
+                _volume.GetFrameWidth(), 
+                _volume.GetFrameHeight());
 
             if (exclusionZones == null || exclusionZones.Count == 0)
             {
@@ -147,15 +150,21 @@ namespace CPRTouchVision.Models
         private void ProcessImage(ushort[] image, DateTime time)
         {
             List<Touch2DCluster> clusters = new List<Touch2DCluster>();
-            var processingStart = DateTime.Now;
 
-            var points = Extract2DPointsInsideVolume(image);
+            var sw = Stopwatch.StartNew();
 
-            if (points.Count < _clusterManager.MinPoints)
-            {
-                return;
-            }
+            var points = Extract2DPointsIndicesInsideVolume(image);
+
+            //var points = Extract2DPointsInsideVolume(image);
+            double extractMs = sw.Elapsed.TotalMilliseconds;
+
+            sw.Restart();
+
             clusters = _clusterManager.DetectClusters(points);
+            double clusterMs = sw.Elapsed.TotalMilliseconds;
+
+            sw.Restart();
+            double mappingMs = 0;
 
             if (clusters?.Count > 0)
             {
@@ -167,32 +176,36 @@ namespace CPRTouchVision.Models
                 foreach (var cluster in clusters)
                 {
                     cluster.NormalizedCenter = _volume.GetRelativeScreenCoordinatesFrom2D(cluster.Center);
-                    cluster.Center3D = _volume.Get3DPointFromLocal2DPoint(cluster.Center);
+                    //cluster.Center3D = _volume.Get3DPointFromLocal2DPoint(cluster.Center);
                 }
+
+                mappingMs = sw.Elapsed.TotalMilliseconds;
+
                 var frame = new TouchFrame(clusters);
                 TouchFrameReady?.Invoke(this, frame);
             }
-            var processingEnd = DateTime.Now;
+
 #if DEBUG || TEST
-            if (points.Count >= _clusterManager.MinPoints)
+            if (points.Count > 0)
             {
                 App.Log($"Filtered points count: {points.Count}");
             }
-            else
-            {
-                App.Log($"Not enough points for clustering. Count: {points.Count}");
-            }
+
 
             if (clusters?.Count > 0)
             {
                 App.Log($"[TouchTracker] Detected {clusters.Count} clusters after exclusion filtering.");
                 foreach (var cluster in clusters)
                 {
-                    App.Log($"Cluster: Center={cluster.Center}, Radius={cluster.Radius}, Count={cluster.Count}");
+                    App.Log($"Cluster: Screen Center={cluster.NormalizedCenter} Center={cluster.Center}, Radius={cluster.Radius}, Count={cluster.Count}");
                 }
             }
 
-            App.Log($"[TouchTracker] Processed frame in {(processingEnd - processingStart).TotalMilliseconds:F2} ms.");
+            App.Log(
+                $"Extract={extractMs:F2}ms " +
+                $"DBSCAN={clusterMs:F2}ms " +
+                $"Map={mappingMs:F2}ms " +
+                $"Total={(extractMs+ clusterMs+ mappingMs):F2}");
 
 #endif
 
@@ -202,6 +215,12 @@ namespace CPRTouchVision.Models
         {
             return _volume.ExtractProjectedPointsInsideVolumeFromImage(depthImage);
         }
+
+        private List<int> Extract2DPointsIndicesInsideVolume(ushort[] depthImage)
+        {
+            return _volume.ExtractProjectedPointIndicesInsideVolumeFromImage(depthImage);
+        }
+
         public void Stop()
         {
             _isRunning = false;
