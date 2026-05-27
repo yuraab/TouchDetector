@@ -25,8 +25,8 @@ namespace CPRTouchVision.Models
 {
     public interface ITouchVolume
     {
-        Vector2 GetRelativeScreenCoordinatesFrom2D(Vector2 center);
-        Vector3 Get3DPointFromLocal2DPoint(Vector2 center);
+        Vector2 GetRelativeScreenCoordinatesFrom2D(Vector2 center, ushort[] image);
+        Vector3 Get3DPointFromLocal2DPoint(Vector2 center, ushort[] image);
         List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage);
         List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage, long frameId);
         int GetFrameWidth();
@@ -39,6 +39,9 @@ namespace CPRTouchVision.Models
         protected Vector3 _wallNormal;
         protected float _wallDistance;
         protected Vector3[] _quadCorners; // 4 corners on wall plane in 3D
+
+        protected Calibration _calibration;
+        protected CalibrationGeometry _calibrationGeometry;
 
         //
         // Offsets toward camera
@@ -68,7 +71,9 @@ namespace CPRTouchVision.Models
             float wallDistance,
             Vector3[] quadCorners,
             float minOffset, float maxOffset,
-            int frameWidth, int frameHeight)
+            int frameWidth, int frameHeight,
+            Calibration calibration,
+            CalibrationGeometry calibrationGeometry = CalibrationGeometry.Depth)
         {
             _wallNormal = wallNormal;
             _wallDistance = wallDistance;
@@ -77,8 +82,10 @@ namespace CPRTouchVision.Models
             _quadCorners = quadCorners;
             _minOffset = minOffset;
             _maxOffset = maxOffset;
+            _calibration = calibration;
             _quadCorners2D = BuildQuadCorners2D(quadCorners, out _origin, out _uAxis, out _vAxis);
             _homographyProjectionToScreen = GetHomographyToRelativeScreen();
+            _calibrationGeometry = calibrationGeometry;
         }
 
         //
@@ -102,13 +109,32 @@ namespace CPRTouchVision.Models
             return Cv2.GetPerspectiveTransform(srcPts, dstPts);
         }
 
-        public abstract Vector3 Get3DPointFromLocal2DPoint(Vector2 center);
+        private int GetIndexFromXY(int x, int y) => y * _frameWidth + x;
+
+        public Vector3 Get3DPointFromLocal2DPoint(
+            Vector2 point, 
+            ushort[] image)
+        {
+            var depthImageIndex = GetIndexFromXY((int)point.X, (int)point.Y);
+            var point3d = _calibration.Convert2DTo3D(
+                new(point.X, point.Y),
+                image[depthImageIndex],
+                _calibrationGeometry,
+                CalibrationGeometry.Depth);
+            if (point3d == null)
+            {
+                return new Vector3();
+            }
+            return new Vector3(point3d.Value.X, point3d.Value.Y, point3d.Value.Z);
+        }
         public abstract List<Float2> ExtractProjectedPointsInsideVolumeFromImage(ushort[] depthImage);
 
-        public Vector2 GetRelativeScreenCoordinatesFrom2D(Vector2 uv)
+        public Vector2 GetRelativeScreenCoordinatesFrom2D(Vector2 xy, ushort[] image)
         {
-            Point2f projected2D = new(uv.X, uv.Y);
-            Point2f[] mapped = Cv2.PerspectiveTransform(new[] { projected2D }, _homographyProjectionToScreen);
+            var point = Get3DPointFromLocal2DPoint(xy, image);
+            var projected2D = ProjectPointToUV(point);
+            Point2f projected2f = new(projected2D.X, projected2D.Y);
+            Point2f[] mapped = Cv2.PerspectiveTransform(new[] { projected2f }, _homographyProjectionToScreen);
             return new(mapped[0].X, mapped[0].Y);
         }
 
@@ -671,6 +697,7 @@ namespace CPRTouchVision.Models
 #endif
             return result;
         }
+        /*
         Vector3 GetProjectionToPlane(Vector3 point)
         {
             var distanceToPlane = Vector3.Dot(_wallNormal, point) + _wallDistance;
@@ -684,11 +711,7 @@ namespace CPRTouchVision.Models
             var point2D = PointToUV(projectedPoint);
             return GetRelativeScreenCoordinatesFrom2D(point2D);
         }
-
-        public override Vector3 Get3DPointFromLocal2DPoint(Vector2 point)
-        {
-            return _origin + _uAxis * point.X + _vAxis * point.Y;
-        }
+        */
 
         public override List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage, long frameId)
         {
@@ -737,6 +760,7 @@ namespace CPRTouchVision.Models
         private readonly float _fy;
         private readonly float _cx;
         private readonly float _cy;
+        private readonly Calibration _calibration;
 
         //
         // Plane
@@ -845,7 +869,14 @@ namespace CPRTouchVision.Models
             Calibration calibration)
         {
 
-            Init(wallNormal, wallD, quadCorners, minOffset, maxOffset, fw, fh);
+            Init(
+                wallNormal, 
+                wallD, 
+                quadCorners, 
+                minOffset, maxOffset, 
+                fw, fh,
+                calibration);
+
             var intr =
                 calibration
                     .DepthCameraCalibration
@@ -856,7 +887,7 @@ namespace CPRTouchVision.Models
             _cy = intr.Cy;
             _fx = intr.Fx;
             _fy = intr.Fy;
-
+            _calibration = calibration;
 #if DEBUG || TEST
             App.Log($"Creating LutTouchVolume with _wallNormal={_wallNormal}, wallD={wallD}, minOffset={minOffset}, maxOffset={maxOffset}");
             foreach (var p in _quadCorners)
@@ -1418,11 +1449,6 @@ namespace CPRTouchVision.Models
             }
 
             return result;
-        }
-
-        public override Vector3 Get3DPointFromLocal2DPoint(Vector2 center)
-        {
-            throw new NotImplementedException();
         }
 
         public List<Float2> ExtractProjectedPointsInsideVolumeFromImage2(ushort[] depthImage)

@@ -675,16 +675,18 @@ namespace CPRTouchVision.Models
 
             }
 
-            Task.Run(() => _oscClient.Send(_touches));
+            if (_touches.Count > 0) Task.Run(() => _oscClient.Send(_touches));
 
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
         }
+        /*
          private Vector2 GetScreenPointFromPlanePoint(OBSharp.Float2 point)
         {
             var point3D = _detectableSpace.Get3DPointFromLocal2DPoint(new (point.X, point.Y));
             var p = _calibration.Convert3DTo2D(new(point3D.X, point3D.Y, point3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
             return p.HasValue ? new (p.Value.X, p.Value.Y) : new Vector2(0,0);
         }
+        */
         private void OnLoopFailed(object? sender, LoopFailedEventArgs e)
         {
             App.Log("Capture loop failed");

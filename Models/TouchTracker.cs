@@ -174,7 +174,7 @@ namespace CPRTouchVision.Models
 
                 foreach (var cluster in clusters)
                 {
-                    cluster.NormalizedCenter = _volume.GetRelativeScreenCoordinatesFrom2D(cluster.Center);
+                    cluster.NormalizedCenter = _volume.GetRelativeScreenCoordinatesFrom2D(cluster.Center, image);
                     //cluster.Center3D = _volume.Get3DPointFromLocal2DPoint(cluster.Center);
                 }
 
