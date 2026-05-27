@@ -59,7 +59,7 @@ namespace CPRTouchVision.Models
                 Name = "TouchTrackerLoop"
             };
 
-#if DEBUG || TEST
+#if DEBUG || TEST2
             
 
             sample = Utilities.ReadCapturedFrame(Utilities.GetPath(Constants.StableDepthFile));
@@ -109,39 +109,45 @@ namespace CPRTouchVision.Models
         {
             while (_isRunning)
             {
-                (ushort[] image, CalibrationGeometry geometry, DateTime time)? item = null;
+                (ushort[] image,
+                 CalibrationGeometry geometry,
+                 DateTime time)? item = null;
 
-                while (true)
+                //
+                // Lock ONLY queue access
+                //
+
+                lock (_queueLock)
                 {
-                    lock (_queueLock)
+                    if (_imageQueue.Count > 0)
                     {
-                        if (_imageQueue.Count > 0)
-                        {
-                            item = _imageQueue.Dequeue();
-                        }
-
-                        if (item == null)
-                        {
-                            Thread.Sleep(1); // avoid tight loop when queue is empty
-                            continue;
-                        }
-
-                        try
-                        {
-                            var (image, geometry, time) = item.Value;
-
-                            // Process the image
-                            ProcessImage(image, time);
-                        }
-                        catch (Exception ex)
-                        {
-                            App.Log($"[TouchTracker] Processing failed: {ex}");
-                        }
-
+                        item = _imageQueue.Dequeue();
                     }
                 }
-            }
 
+                //
+                // No frame available
+                //
+
+                if (item == null)
+                {
+                    Thread.Sleep(1);
+                    continue;
+                }
+
+                try
+                {
+                    var (image, geometry, time) =
+                        item.Value;
+
+                    ProcessImage(image, time);
+                }
+                catch (Exception ex)
+                {
+                    App.Log(
+                        $"[TouchTracker] Processing failed:\n{ex}");
+                }
+            }
         }
 
         private void ProcessImage(ushort[] image, DateTime time)
@@ -168,22 +174,25 @@ namespace CPRTouchVision.Models
             sw.Restart();
             double mappingMs = 0;
 #endif
-            if (clusters?.Count > 0)
-            {
-                if (_exclusionManager != null)
-                {
-                    clusters = _exclusionManager.FilterClusters(clusters);
-                }
 
-                foreach (var cluster in clusters)
-                {
-                    cluster.NormalizedCenter = _volume.GetRelativeScreenCoordinatesFrom2D(cluster.Center, image);
-                    //cluster.Center3D = _volume.Get3DPointFromLocal2DPoint(cluster.Center);
-                }
+            if (_exclusionManager != null)
+            {
+                clusters = _exclusionManager.FilterClusters(clusters);
+            }
+
+            foreach (var cluster in clusters)
+            {
+                cluster.NormalizedCenter = _volume.GetRelativeScreenCoordinatesFrom2D(cluster.Center, image);
+                //cluster.Center3D = _volume.Get3DPointFromLocal2DPoint(cluster.Center);
+            }
 #if DEBUG2 || TEST2
                 mappingMs = sw.Elapsed.TotalMilliseconds;
 #endif
 
+
+
+            if (clusters?.Count > 0)
+            {
                 var frame = new TouchFrame(clusters, time);
                 try
                 {
@@ -194,7 +203,6 @@ namespace CPRTouchVision.Models
                     App.Log(ex.ToString());
                 }
             }
-
 #if DEBUG2 || TEST2
             if (points.Count > 0)
             {
@@ -265,5 +273,372 @@ namespace CPRTouchVision.Models
             Stop();
         }
     }
+
+    public sealed class TouchTracker : IDisposable
+    {
+        private readonly ITouchVolume _volume;
+
+        private readonly ConnectedComponentClusterManager
+            _clusterManager;
+
+        private readonly ExclusionZoneManager_?
+            _exclusionManager;
+
+        //
+        // Threading
+        //
+
+        private readonly Thread _thread;
+
+        private readonly AutoResetEvent _frameReady =
+            new(false);
+
+        private readonly object _frameLock =
+            new();
+
+        //
+        // Latest frame only
+        //
+
+        private ushort[]? _latestImage;
+
+        private DateTime _latestTime;
+
+        private bool _hasNewFrame;
+
+        //
+        // State
+        //
+
+        private bool _isRunning;
+
+        private bool _isDisposed;
+
+        private long _frameCounter;
+
+        //
+        // Events
+        //
+
+        public event EventHandler<TouchFrame>?
+            TouchFrameReady;
+
+        public TouchTracker(
+            ITouchVolume volume,
+            Calibration calibration,
+            List<ExclusionZone>? exclusionZones = null)
+        {
+            _volume = volume;
+
+            _clusterManager =
+                new ConnectedComponentClusterManager(
+                    _volume.GetFrameWidth(),
+                    _volume.GetFrameHeight());
+
+            if (exclusionZones == null ||
+                exclusionZones.Count == 0)
+            {
+                _exclusionManager = null;
+            }
+            else
+            {
+                _exclusionManager =
+                    new ExclusionZoneManager_();
+
+                _exclusionManager.AddZones(
+                    exclusionZones);
+            }
+
+            _thread =
+                new Thread(ProcessLoop)
+                {
+                    IsBackground = true,
+                    Name = "TouchTrackerLoop"
+                };
+
+#if DEBUG || TEST
+            App.Log("TouchTracker created.");
+#endif
+        }
+
+        //
+        // Start tracker
+        //
+
+        public void Run()
+        {
+            if (_isRunning)
+                throw new InvalidOperationException(
+                    "TouchTracker already running.");
+
+            _isRunning = true;
+
+            _thread.Start();
+        }
+
+        //
+        // Submit newest frame
+        // Replaces previous frame
+        //
+
+        public void SubmitFrame(
+            ushort[] image,
+            DateTime time)
+        {
+            lock (_frameLock)
+            {
+                _latestImage = image;
+                _latestTime = time;
+
+                _hasNewFrame = true;
+            }
+
+            //
+            // Wake processing thread
+            //
+
+            _frameReady.Set();
+        }
+
+        //
+        // Processing thread
+        //
+
+        private void ProcessLoop()
+        {
+            while (_isRunning)
+            {
+                //
+                // Wait for next frame
+                //
+
+                _frameReady.WaitOne();
+
+                if (!_isRunning)
+                    break;
+
+                ushort[]? image = null;
+
+                DateTime time = default;
+
+                //
+                // Grab latest frame
+                //
+
+                lock (_frameLock)
+                {
+                    if (_hasNewFrame &&
+                        _latestImage != null)
+                    {
+                        image = _latestImage;
+
+                        time = _latestTime;
+
+                        //
+                        // Mark consumed
+                        //
+
+                        _latestImage = null;
+
+                        _hasNewFrame = false;
+                    }
+                }
+
+                //
+                // Nothing to process
+                //
+
+                if (image == null)
+                    continue;
+
+                try
+                {
+                    ProcessImage(image, time);
+                }
+                catch (Exception ex)
+                {
+                    App.Log(
+                        $"[TouchTracker] Processing failed:\n{ex}");
+                }
+            }
+        }
+
+        //
+        // Process single frame
+        //
+
+        private void ProcessImage(
+            ushort[] image,
+            DateTime time)
+        {
+            long frameId =
+                Interlocked.Increment(
+                    ref _frameCounter);
+
+#if DEBUG2 || TEST2
+        var sw =
+            Stopwatch.StartNew();
+#endif
+
+            //
+            // Extract points inside touch volume
+            //
+
+            var points =
+                _volume
+                    .ExtractProjectedPointIndicesInsideVolumeFromImage(
+                        image,
+                        frameId);
+
+#if DEBUG2 || TEST2
+        double extractMs =
+            sw.Elapsed.TotalMilliseconds;
+
+        sw.Restart();
+#endif
+
+            //
+            // Detect clusters
+            //
+
+            var clusters =
+                _clusterManager
+                    .DetectClusters(points);
+
+#if DEBUG2 || TEST2
+        double clusterMs =
+            sw.Elapsed.TotalMilliseconds;
+
+        sw.Restart();
+#endif
+
+            //
+            // Exclusion zones
+            //
+
+            if (_exclusionManager != null)
+            {
+                clusters =
+                    _exclusionManager
+                        .FilterClusters(clusters);
+            }
+
+            //
+            // Map to screen coordinates
+            //
+
+            foreach (var cluster in clusters)
+            {
+                cluster.NormalizedCenter =
+                    _volume
+                        .GetRelativeScreenCoordinatesFrom2D(
+                            cluster.Center,
+                            image);
+            }
+
+#if DEBUG2 || TEST2
+        double mappingMs =
+            sw.Elapsed.TotalMilliseconds;
+#endif
+
+            //
+            // No touches
+            //
+
+            if (clusters.Count == 0)
+                return;
+
+            //
+            // Raise event
+            //
+
+            var frame =
+                new TouchFrame(
+                    clusters,
+                    time);
+
+            try
+            {
+                TouchFrameReady?.Invoke(
+                    this,
+                    frame);
+            }
+            catch (Exception ex)
+            {
+                App.Log(
+                    $"TouchFrameReady failed:\n{ex}");
+            }
+
+#if DEBUG2 || TEST2
+
+        App.Log(
+            $"Frame={frameId} " +
+            $"Points={points.Count} " +
+            $"Clusters={clusters.Count}");
+
+        foreach (var cluster in clusters)
+        {
+            App.Log(
+                $"Cluster: " +
+                $"Center={cluster.Center} " +
+                $"Screen={cluster.NormalizedCenter} " +
+                $"Radius={cluster.Radius:F1} " +
+                $"Count={cluster.Count}");
+        }
+
+        App.Log(
+            $"Extract={extractMs:F2}ms " +
+            $"Cluster={clusterMs:F2}ms " +
+            $"Map={mappingMs:F2}ms " +
+            $"Total={(extractMs + clusterMs + mappingMs):F2}ms");
+#endif
+        }
+
+        //
+        // Stop tracker
+        //
+
+        public void Stop()
+        {
+            if (!_isRunning)
+                return;
+
+            _isRunning = false;
+
+            //
+            // Wake thread so it can exit
+            //
+
+            _frameReady.Set();
+
+            //
+            // Wait thread exit
+            //
+
+            _thread.Join();
+
+#if DEBUG || TEST
+            App.Log("TouchTracker stopped.");
+#endif
+        }
+
+        //
+        // Dispose
+        //
+
+        public void Dispose()
+        {
+            if (_isDisposed)
+                return;
+
+            _isDisposed = true;
+
+            Stop();
+
+            _frameReady.Dispose();
+        }
+    }
+
+
 }
 

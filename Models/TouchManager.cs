@@ -432,7 +432,7 @@ namespace CPRTouchVision.Models
         public const int CalibrationPointsCount = 3;
         public const int TouchZonePointsCount = 4;
         private bool isImageSaved;
-        private bool _isReadyReceiveNewCapture = false;
+        //private bool _isReadyReceiveNewCapture = false;
         private ushort _maxWallDepth = 1;
         private ushort _minWallDepth = ushort.MaxValue;
         private bool _floorCamera; // camera is mounted on the floor/ceil
@@ -586,11 +586,16 @@ namespace CPRTouchVision.Models
 
             _touchLoop = new(_detectableSpace, _calibration, _exclusionZones);
 
+            _touchLoop.TouchFrameReady -= OnTouchFrameReady;
             _touchLoop.TouchFrameReady += OnTouchFrameReady;
+
+            _touchLoop.TouchLoopFailed -= OnTouchLoopFailed;
             _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
+            /*
+            _touchLoop.ReadyForNewImage -= OnReadyForNewImage;
             _touchLoop.ReadyForNewImage += OnReadyForNewImage;
-            
-            if  (!_touchLoop._isRunning) 
+            */
+            if  (!_touchLoop.IsRunning) 
             {
                 _touchLoop.Run();
                 OnStatus("Touch detection is running");
@@ -600,7 +605,7 @@ namespace CPRTouchVision.Models
 
             IsRunningTrackTouch = true;
 
-            _isReadyReceiveNewCapture = true;
+            //_isReadyReceiveNewCapture = true;
             //_detectableSpace.WallNotAligned += OnWallNotAligned;
 
 #if TEST || MOCK
@@ -615,13 +620,15 @@ namespace CPRTouchVision.Models
             ResetTouchZone();
         }
 
+        /*
         private void OnReadyForNewImage(object? sender, bool isReady)
         {
             if (isReady) _isReadyReceiveNewCapture = true;
         }
-
+        */
         private void OnTouchFrameReady(object? sender, TouchFrame e)
         {
+            App.Log($"TouchManager received frame");
             int idCounter = 0;
 
             if (e.Clusters == null || e.Clusters.Count == 0) return;
@@ -678,7 +685,6 @@ namespace CPRTouchVision.Models
 #endif
             }
 
-            App.Log(message);
             if (_touches.Count > 0)
             {
                 Task.Run(() => _oscClient.Send(_touches));
@@ -940,15 +946,12 @@ namespace CPRTouchVision.Models
                 // Runtime touch processing
                 //
 
-                if (_isReadyReceiveNewCapture &&
-                    _touchLoop != null)
-                {
-                    _ = _touchLoop.TrySendImage(
-                        _nativeDepthData,
-                        depthImage.WidthPixels,
-                        depthImage.HeightPixels,
-                        now);
-                }
+                _touchLoop?.TrySendImage(
+                    _nativeDepthData,
+                    depthImage.WidthPixels,
+                    depthImage.HeightPixels,
+                    now);
+
             
             Changed?.Invoke(
                 this,
@@ -1035,11 +1038,12 @@ namespace CPRTouchVision.Models
             {
                 _touchLoop.TouchFrameReady -= OnTouchFrameReady;
                 _touchLoop.TouchLoopFailed -= OnTouchLoopFailed;
+                //_touchLoop.ReadyForNewImage -= OnReadyForNewImage;
 
                 _touchLoop.Dispose();
                 _touchLoop = null;
             }
-        _isReadyReceiveNewCapture = false;
+        //_isReadyReceiveNewCapture = false;
 
         IsRunningTrackTouch = false;
         }

@@ -8,181 +8,241 @@ namespace CPRTouchVision.Models
 {
     public sealed class TouchLoop : IDisposable
     {
-        private readonly AutoResetEvent _readyToReceive = new(true);  // Initially ready
-        private readonly AutoResetEvent _imageAvailable = new(false); // No image yet
-        //private OBSharp.Sensor.Image? _imageForProcessing;
-        //private CalibrationGeometry? _calibrationGeometry;
         private readonly Thread _thread;
-        public bool _isRunning { get; private set; }
+
+        private readonly object _frameLock =
+            new();
+
+        private readonly TouchTracker _tracker;
+
+        //
+        // Latest frame only
+        //
+
+        private ushort[]? _latestImage;
+        private DateTime _latestTime;
+
+        private bool _hasNewFrame;
+
         private bool _isDisposed;
-        //private readonly object _lock = new();
-        private readonly TouchTracker_ _tracker;
+
+        public bool IsRunning { get; private set; }
+
+        //
+        // FPS limiting
+        //
+
+        private readonly TimeSpan _minFrameInterval;
+
+        private DateTime _lastAcceptedFrameTime =
+            DateTime.MinValue;
+
+        //
+        // Events
+        //
 
         public event EventHandler<TouchFrame>? TouchFrameReady;
+
         public event EventHandler<Exception>? TouchLoopFailed;
 
-        private int _maxQueueSize = 3;
-        private readonly object _queueLock = new();
-        private readonly Queue<(ushort[] Image, CalibrationGeometry Geometry, DateTime time)> _imageQueue = new();
-        
-        private TimeSpan _minFrameInterval = TimeSpan.FromMilliseconds(100); // 10 FPS
-        private DateTime _lastSentTime = DateTime.MinValue;
-        //private readonly object _rateLock = new();
-
-        //private Thread? _processingThread;
-
-        private readonly int _maxRatePerSecond;
-        private DateTime _lastProcessedTime = DateTime.MinValue;
-
-        // Event to notify main process about readiness
         public event EventHandler<bool>? ReadyForNewImage;
-        public void SetMaxQueueSize(int max) => _maxQueueSize = max;
-        public void SetTargetFps(int fps) => _minFrameInterval = TimeSpan.FromMilliseconds(1000.0 / fps);
 
         public TouchLoop(
-            ITouchVolume volume, 
+            ITouchVolume volume,
             Calibration calibration,
-            List<ExclusionZone> exclusionZones = null,
-            int maxRatePerSecond = 10)
+            List<ExclusionZone>? exclusionZones = null,
+            int maxRatePerSecond = 30)
         {
-            _tracker = new TouchTracker_(volume, calibration, exclusionZones);  
-            _thread = new Thread(ProcessingLoop)
-            {
-                IsBackground = true,
-                Name = "TouchLoop"
-            };
-            _maxRatePerSecond = maxRatePerSecond;
-            _minFrameInterval = TimeSpan.FromMilliseconds(1000/ _maxRatePerSecond);
+            _tracker =
+                new TouchTracker(
+                    volume,
+                    calibration,
+                    exclusionZones);
+
+            //
+            // Avoid duplicate subscription
+            //
+
+            _tracker.TouchFrameReady -=
+                OnTrackerFrameReady;
+
+            _tracker.TouchFrameReady +=
+                OnTrackerFrameReady;
+
+            _minFrameInterval =
+                TimeSpan.FromMilliseconds(
+                    1000.0 / maxRatePerSecond);
+
+            _thread =
+                new Thread(ProcessingLoop)
+                {
+                    IsBackground = true,
+                    Name = "TouchLoop"
+                };
         }
 
         public void Run()
         {
-            if (_isRunning)
-                throw new InvalidOperationException("Could not run tracking loop. It's already running.");
+            if (IsRunning)
+                return;
 
-            _isRunning = true;
+            IsRunning = true;
 
-            // Subscribe to tracker events
-            _tracker.TouchFrameReady += OnTrackerFrameReady;
             _tracker.Run();
 
             _thread.Start();
+
 #if DEBUG || TEST
-            App.Log("Loop started");
+            App.Log("TouchLoop started");
 #endif
         }
 
-        //public bool TrySendImage(Capture capture)
-        public bool TrySendImage(ushort[] image, int fw, int fh, DateTime time)
+        //
+        // NOTE:
+        // image is already copied outside
+        //
+
+        public bool TrySendImage(
+            ushort[] image,
+            int fw,
+            int fh,
+            DateTime time)
         {
-            if (!_isRunning)
+            if (!IsRunning)
                 return false;
 
-            var now = DateTime.Now;
+            //
+            // FPS limit
+            //
 
-            lock (_queueLock) 
+            var now =
+                DateTime.UtcNow;
+
+            if (now - _lastAcceptedFrameTime <
+                _minFrameInterval)
             {
-                // Rate limiting check
-                if (now - _lastSentTime < _minFrameInterval)
-                {
-                    ReadyForNewImage?.Invoke(this, false);
-                    return false;
-                }
+                ReadyForNewImage?.Invoke(
+                    this,
+                    false);
 
-                // Queue size check
-                if (_imageQueue.Count >= _maxQueueSize)
-                {
-                    ReadyForNewImage?.Invoke(this, false);
-                    return false;
-                }
-
-                _lastSentTime = now;
-
-                ushort[] depthImage = new ushort[image.Length];
-                image.AsSpan().CopyTo(depthImage);
-                _imageQueue.Enqueue((depthImage, CalibrationGeometry.Color, time));
-
-                ReadyForNewImage?.Invoke(this, true); // Notify main process that it can send new image
-                _imageAvailable.Set(); // Wake processing thread
-                return true;
+                return false;
             }
-        }
 
-        private void OnTrackerFrameReady(object? sender, TouchFrame e)
-        {
-            TouchFrameReady?.Invoke(this, e); // Forward event to main process
-        }
+            _lastAcceptedFrameTime =
+                now;
 
-        private void OnTouchLoopException(Exception ex)
-        {
-            TouchLoopFailed?.Invoke(this, ex); // Notify main process
+            //
+            // Store ONLY latest frame
+            //
+
+            lock (_frameLock)
+            {
+                _latestImage = image;
+                _latestTime = time;
+                _hasNewFrame = true;
+            }
+
+            ReadyForNewImage?.Invoke(
+                this,
+                true);
+
+            return true;
         }
 
         private void ProcessingLoop()
         {
-            while (_isRunning)
+            while (IsRunning)
             {
-                _imageAvailable.WaitOne();
+                ushort[]? image = null;
+                DateTime time = default;
 
-                (ushort[] image, CalibrationGeometry Geometry, DateTime time)? data = null;
+                //
+                // Grab latest frame
+                //
 
-                lock (_queueLock)
+                lock (_frameLock)
                 {
-                    if (_imageQueue.Count > 0)
+                    if (_hasNewFrame &&
+                        _latestImage != null)
                     {
-                        data = _imageQueue.Dequeue();
-                        _lastProcessedTime = DateTime.UtcNow;
-                        _imageAvailable.Set();
+                        image = _latestImage;
+                        time = _latestTime;
+
+                        //
+                        // Mark consumed
+                        //
+
+                        _latestImage = null;
+                        _hasNewFrame = false;
                     }
                 }
 
-                if (data.HasValue)
+                //
+                // No frame available
+                //
+
+                if (image == null)
                 {
-                    try
-                    {
-                        _ = _tracker.EnqueueImage((ushort[])data.Value.image, (CalibrationGeometry)data.Value.Geometry!, data.Value.time);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[TouchLoop] Processing error: {ex}");
-                    }
-                    finally
-                    {
-                        // Do not dispose image here because _tracker is responsible for this!
-                        _readyToReceive.Set();
-                    }
+                    Thread.Sleep(1);
+                    continue;
+                }
+
+                try
+                {
+                    //
+                    // Process frame
+                    //
+
+                    //_tracker.EnqueueImage(image, CalibrationGeometry.Depth, time);
+                    _tracker.SubmitFrame(image, time);
+                }
+                catch (Exception ex)
+                {
+                    App.Log(
+                        $"TouchLoop processing failed:\n{ex}");
+
+                    TouchLoopFailed?.Invoke(
+                        this,
+                        ex);
                 }
             }
         }
 
-        public void Dispose()
+        private void OnTrackerFrameReady(
+            object? sender,
+            TouchFrame frame)
         {
-            if (_isDisposed) return;
-            _isDisposed = true;
-
-            _isRunning = false;
-
-            // 1. Unsubscribe from events first to prevent race conditions during shutdown
-            _tracker.TouchFrameReady -= OnTrackerFrameReady;
-
-            // 2. Dispose tracker to stop background thread and clean queue
-            _tracker.Dispose();
-
-            // 3. Dispose last pending image (if any)
-            //_imageForProcessing?.Dispose();
-            //_imageForProcessing = null;
-
-            // 4. Dispose signaling resources (AutoResetEvents)
-            _readyToReceive.Dispose();
-            _imageAvailable.Dispose();
-
-#if DEBUG
-            App.Log("TouchLoop disposed.");
-#endif
+            TouchFrameReady?.Invoke(
+                this,
+                frame);
         }
 
+        public void Dispose()
+        {
+            if (_isDisposed)
+                return;
 
+            _isDisposed = true;
 
+            IsRunning = false;
+
+            //
+            // Unsubscribe events
+            //
+
+            _tracker.TouchFrameReady -=
+                OnTrackerFrameReady;
+
+            //
+            // Dispose tracker
+            //
+
+            _tracker.Dispose();
+
+#if DEBUG || TEST
+            App.Log("TouchLoop disposed");
+#endif
+        }
     }
 
 
