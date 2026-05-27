@@ -78,7 +78,7 @@ namespace CPRTouchVision.Models
             if (!_isRunning)
                 return false;
 
-            var now = DateTime.UtcNow;
+            var now = DateTime.Now;
 
             lock (_queueLock) 
             {

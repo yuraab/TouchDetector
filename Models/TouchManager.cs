@@ -625,8 +625,12 @@ namespace CPRTouchVision.Models
             int idCounter = 0;
 
             if (e.Clusters == null || e.Clusters.Count == 0) return;
+
             _touches.Clear();
-            var time = DateTime.UtcNow;
+
+            var time = e.Timestamp;
+            string message = time.ToString("HH:mm:ss.fff") +"\n";
+
             foreach (var c in e.Clusters) 
             {
                 
@@ -669,14 +673,18 @@ namespace CPRTouchVision.Models
                 });
 #if DEBUG || TEST
                 var t = _touches.Last();
-                string message = $"[id:{t.Id} Screen Center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY})]";
-                App.Log(message);
+                message += $"[id:{t.Id} Screen Center:({t.X:F2},{t.Y:F2}) normalizedCenter:({t.NormalizedX}:{t.NormalizedY})]\n";
+                
 #endif
-
             }
 
-            if (_touches.Count > 0) Task.Run(() => _oscClient.Send(_touches));
-
+            App.Log(message);
+            if (_touches.Count > 0)
+            {
+                Task.Run(() => _oscClient.Send(_touches));
+                App.Log(message);
+                App.Log($"Frame process time = {(DateTime.Now - time).TotalMilliseconds} ms");
+            }
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
         }
         /*
@@ -731,10 +739,11 @@ namespace CPRTouchVision.Models
 
         private void OnCaptureReady(object? sender, CaptureLoopEventArgs e)
         {
-            var now = DateTime.UtcNow;
 
             if (e.Capture == null || e.Capture.IsDisposed)
                 return;
+
+            var now = e.Timestamp;
 
             using var capture = e.Capture;
 

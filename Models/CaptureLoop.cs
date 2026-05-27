@@ -155,12 +155,12 @@ namespace CPRTouchVision.Models
                                     });
 
                                     PendingRequest = null; // Reset
-                                    App.Log("🎯 BackgroundLoop captured calibration frame!");
+                                    App.Log("BackgroundLoop captured calibration frame!");
                                 }
                             }
                             // -----------------
-
-                            CaptureReady?.Invoke(this, new(capture));
+                            var timestamp = DateTime.Now;
+                            CaptureReady?.Invoke(this, new(capture, timestamp));
                         }
                     }
                     else
@@ -279,8 +279,13 @@ namespace CPRTouchVision.Models
     internal class CaptureLoopEventArgs : EventArgs
     {
         public Capture? Capture { get; }
+        public DateTime Timestamp { get; } // Use raw DateTime
 
-        public CaptureLoopEventArgs(Capture? capture) => Capture = capture;
+        public CaptureLoopEventArgs(Capture? capture, DateTime timestamp)
+        {
+            Capture = capture;
+            Timestamp = timestamp;
+        }
     }
 
     internal class LoopFailedEventArgs : EventArgs

@@ -150,21 +150,24 @@ namespace CPRTouchVision.Models
 
             long frameId =Interlocked.Increment(ref _frameCounter);
 
+#if DEBUG2 || TEST2
             var sw = Stopwatch.StartNew();
-
+#endif
             var points = _volume.ExtractProjectedPointIndicesInsideVolumeFromImage(image, frameId);//Extract2DPointsIndicesInsideVolume(image);
 
             //var points = Extract2DPointsInsideVolume(image);
+#if DEBUG2 || TEST2
             double extractMs = sw.Elapsed.TotalMilliseconds;
 
             sw.Restart();
-
+#endif
             clusters = _clusterManager.DetectClusters(points);
+#if DEBUG2 || TEST2
             double clusterMs = sw.Elapsed.TotalMilliseconds;
 
             sw.Restart();
             double mappingMs = 0;
-
+#endif
             if (clusters?.Count > 0)
             {
                 if (_exclusionManager != null)
@@ -177,10 +180,11 @@ namespace CPRTouchVision.Models
                     cluster.NormalizedCenter = _volume.GetRelativeScreenCoordinatesFrom2D(cluster.Center, image);
                     //cluster.Center3D = _volume.Get3DPointFromLocal2DPoint(cluster.Center);
                 }
-
+#if DEBUG2 || TEST2
                 mappingMs = sw.Elapsed.TotalMilliseconds;
+#endif
 
-                var frame = new TouchFrame(clusters);
+                var frame = new TouchFrame(clusters, time);
                 try
                 {
                     TouchFrameReady?.Invoke(this, frame);

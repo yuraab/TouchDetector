@@ -712,7 +712,6 @@ namespace CPRTouchVision.Models
             return GetRelativeScreenCoordinatesFrom2D(point2D);
         }
         */
-
         public override List<int> ExtractProjectedPointIndicesInsideVolumeFromImage(ushort[] depthImage, long frameId)
         {
             throw new NotImplementedException();
