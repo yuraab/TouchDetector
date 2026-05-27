@@ -492,20 +492,6 @@ namespace CPRTouchVision.Models
             };
         }
 
-        /*
-        private void UpdateHardwareUI() 
-        { 
-
-            IsHardwareReady = _hardwareStates.Values.All(s => s == StatusCode.Connected); 
-        }
-
-        private void UpdateHardwareSummary() 
-        { 
-            HardwareStatusSummary = string.Join(", ", 
-                _hardwareStates.Select(kvp => $"{kvp.Key}: {kvp.Value}")); 
-        }
-        */
-
         public void Undo()
         {
             if (IsSelectingTouchZone && _touchZonePoints.Count > 0)
@@ -514,7 +500,6 @@ namespace CPRTouchVision.Models
 
         public void StartStopCapture()
         {
-            //App.Log($"CanStartAutoCalibration = {CanStartAutoCalibration}; IsAutoMode = {IsAutoMode}; CanStartCalibration = {CanStartCalibration}");
             if (IsRunning)
             {
                 Stop();
@@ -526,10 +511,15 @@ namespace CPRTouchVision.Models
         }
         private async Task Start()
         {
+#if DEBUG || TEST
             App.Log("Trying Start Capture");
+#endif
+
             if (IsRunning || !Device.TryOpen(out var device)) return;
 
+#if DEBUG || TEST
             App.Log("Start Capture");
+#endif
             _captureLoop = new(device);
             _captureLoop.CaptureReady += OnCaptureReady;
             _captureLoop.LoopFailed += OnLoopFailed;
@@ -591,10 +581,7 @@ namespace CPRTouchVision.Models
 
             _touchLoop.TouchLoopFailed -= OnTouchLoopFailed;
             _touchLoop.TouchLoopFailed += OnTouchLoopFailed;
-            /*
-            _touchLoop.ReadyForNewImage -= OnReadyForNewImage;
-            _touchLoop.ReadyForNewImage += OnReadyForNewImage;
-            */
+
             if  (!_touchLoop.IsRunning) 
             {
                 _touchLoop.Run();
@@ -605,7 +592,6 @@ namespace CPRTouchVision.Models
 
             IsRunningTrackTouch = true;
 
-            //_isReadyReceiveNewCapture = true;
             //_detectableSpace.WallNotAligned += OnWallNotAligned;
 
 #if TEST || MOCK
@@ -620,15 +606,9 @@ namespace CPRTouchVision.Models
             ResetTouchZone();
         }
 
-        /*
-        private void OnReadyForNewImage(object? sender, bool isReady)
-        {
-            if (isReady) _isReadyReceiveNewCapture = true;
-        }
-        */
+
         private void OnTouchFrameReady(object? sender, TouchFrame e)
         {
-            App.Log($"TouchManager received frame");
             int idCounter = 0;
 
             if (e.Clusters == null || e.Clusters.Count == 0) return;
@@ -644,29 +624,6 @@ namespace CPRTouchVision.Models
                 if (c.NormalizedCenter.X < 0 || c.NormalizedCenter.X > 1) continue;
                 if (c.NormalizedCenter.Y < 0 || c.NormalizedCenter.Y > 1) continue;
 
-                /*
-                OBSharp.Float2 center = new OBSharp.Float2(0, 0);
-                
-#if DEBUG || TEST
-                string message = $"[id:{idCounter} Local Center:({c.Center}) Screen Center:({c.NormalizedCenter.X * _fw},{c.NormalizedCenter.Y * _fh}) normalizedCenter:({c.NormalizedCenter.X}:{c.NormalizedCenter.Y}) r:{c.Radius:F2}]";
-                App.Log(message);
-#endif
-                
-                OBSharp.Float2 center = new OBSharp.Float2(0,0);
-                if (c.Center3D == Vector3.Zero)
-                {
-                    c.Center3D = _detectableSpace.Get3DPointFromLocal2DPoint(c.Center);
-                }
-
-                var center2D = _calibration.Convert3DTo2D(new(c.Center3D.X, c.Center3D.Y, c.Center3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-                center = (center2D.HasValue) ? center2D.Value : new OBSharp.Float2(0,0);
-                
-                center = new OBSharp.Float2(c.NormalizedCenter.X * _fw, c.NormalizedCenter.Y * _fh);
-                var right = GetScreenPointFromPlanePoint(new (c.Center.X + c.Radius, c.Center.Y)); // right
-                var left =  GetScreenPointFromPlanePoint(new (c.Center.X - c.Radius, c.Center.Y)); // left
-                var down =  GetScreenPointFromPlanePoint(new (c.Center.X, c.Center.Y + c.Radius)); // up
-                var up =    GetScreenPointFromPlanePoint(new (c.Center.X, c.Center.Y - c.Radius)); // down
-                */
                 _touches.Add(new TouchEvent
                 {
                     Id = idCounter++,
@@ -688,19 +645,17 @@ namespace CPRTouchVision.Models
             if (_touches.Count > 0)
             {
                 Task.Run(() => _oscClient.Send(_touches));
+
+#if DEBUG || TEST
                 App.Log(message);
                 App.Log($"Frame process time = {(DateTime.Now - time).TotalMilliseconds} ms");
+#endif 
+
             }
+
             Changed?.Invoke(this, TouchManagerEventType.NewFrame);
         }
-        /*
-         private Vector2 GetScreenPointFromPlanePoint(OBSharp.Float2 point)
-        {
-            var point3D = _detectableSpace.Get3DPointFromLocal2DPoint(new (point.X, point.Y));
-            var p = _calibration.Convert3DTo2D(new(point3D.X, point3D.Y, point3D.Z), CalibrationGeometry.Depth, CalibrationGeometry.Color);
-            return p.HasValue ? new (p.Value.X, p.Value.Y) : new Vector2(0,0);
-        }
-        */
+
         private void OnLoopFailed(object? sender, LoopFailedEventArgs e)
         {
             App.Log("Capture loop failed");

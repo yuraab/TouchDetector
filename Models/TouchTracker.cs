@@ -553,15 +553,11 @@ namespace CPRTouchVision.Models
             //
 
             var frame =
-                new TouchFrame(
-                    clusters,
-                    time);
+                new TouchFrame(clusters, time);
 
             try
             {
-                TouchFrameReady?.Invoke(
-                    this,
-                    frame);
+                TouchFrameReady?.Invoke(this, frame);
             }
             catch (Exception ex)
             {
@@ -569,29 +565,6 @@ namespace CPRTouchVision.Models
                     $"TouchFrameReady failed:\n{ex}");
             }
 
-#if DEBUG2 || TEST2
-
-        App.Log(
-            $"Frame={frameId} " +
-            $"Points={points.Count} " +
-            $"Clusters={clusters.Count}");
-
-        foreach (var cluster in clusters)
-        {
-            App.Log(
-                $"Cluster: " +
-                $"Center={cluster.Center} " +
-                $"Screen={cluster.NormalizedCenter} " +
-                $"Radius={cluster.Radius:F1} " +
-                $"Count={cluster.Count}");
-        }
-
-        App.Log(
-            $"Extract={extractMs:F2}ms " +
-            $"Cluster={clusterMs:F2}ms " +
-            $"Map={mappingMs:F2}ms " +
-            $"Total={(extractMs + clusterMs + mappingMs):F2}ms");
-#endif
         }
 
         //
